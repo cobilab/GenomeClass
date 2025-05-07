@@ -61,3 +61,33 @@ void progress_bar(int total_tasks) {
     pthread_mutex_unlock(&tasks_done_mutex);
 }
 
+char * concatenate_strings(char *original_content, char *content_to_append, int add_tab) {
+
+    char *temp = malloc(strlen(original_content) + strlen(content_to_append) + 10);
+    if (add_tab == 0){
+        sprintf(temp, "%s%s", original_content, content_to_append);
+    } else {
+        sprintf(temp, "%s\t%s", original_content, content_to_append);
+    }
+    
+    return temp;
+
+}
+
+char * int_to_string (int value) {
+
+    char *temp = malloc(10);
+    sprintf(temp, "%d", value);   
+    return temp;
+
+}
+
+char * float_to_string (float value) {
+
+    char *temp = malloc(32);
+    sprintf(temp, "%f", value);   
+    return temp;
+
+}
+
+

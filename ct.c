@@ -337,21 +337,21 @@ int write_to_file(char* results){
 
         char *first_line = malloc(sizeof(sequences_calc_distance) + 1000); // TODO - this may give some problems in the future depending on the number of sequences to seek distance   
         
-        sprintf(first_line, "%s","Sequence id");
+        first_line = concatenate_strings(first_line, "Sequence id", 0);
         if (calculate_size == 1) {
-            sprintf(first_line, "%s\t%s", first_line, "Sequence size");
-            sprintf(first_line, "%s\t%s", first_line, "Normalized sequence size");
+            first_line = concatenate_strings(first_line, "Sequence size", 1);
+            first_line = concatenate_strings(first_line, "Normalized sequence size", 1);
         }
         if (calculate_gc_content == 1) {
-            sprintf(first_line, "%s\t%s", first_line, "CG content");
+            first_line = concatenate_strings(first_line, "CG content", 1);
         }
         if (sequences_calc_distance != NULL) {
             for (int i = 0; i < number_sequences_calc_distance; i++){
-                sprintf(results, "%s\t%s", results, sequences_calc_distance[i]);
+                first_line = concatenate_strings(first_line, sequences_calc_distance[i], 1);
             }
         }
         if (calculate_compression == 1) {
-            sprintf(first_line, "%s\t%s", first_line, "Compression rate");
+            first_line = concatenate_strings(first_line, "Compression rate", 1);
         }
 
         fprintf(file, "%s\n", first_line);  // Write the first line to the file
@@ -415,13 +415,13 @@ int worker_task(int index_data_sequence){
         float size_sequence_normalized = (float) data_all_sequences[index_data_sequence].number_bases / max_number_bases;
 
         // Copy results
-        sprintf(results, "%s\t%d", results, size_sequence);
-        sprintf(results, "%s\t%f", results, size_sequence_normalized);
+        results = concatenate_strings(results, int_to_string(size_sequence), 1);
+        results = concatenate_strings(results, float_to_string(size_sequence), 1);
     }
 
     if (calculate_gc_content == 1){
         float cg_content = get_cg_content(read_sequence, data_all_sequences[index_data_sequence].length_sequence, data_all_sequences[index_data_sequence].number_bases);
-        sprintf(results, "%s\t%f", results, cg_content);
+        results = concatenate_strings(results, float_to_string(cg_content), 1);
     }
 
     if (sequences_calc_distance != NULL) {
@@ -429,7 +429,7 @@ int worker_task(int index_data_sequence){
 
         // Copy results for each sub sequence considered
         for (int i = 0; i < number_sequences_calc_distance; i++){
-            sprintf(results, "%s\t%f", results, sequence_distances[i]);
+            results = concatenate_strings(results, float_to_string(sequence_distances[i]), 1);
         }
         
     }
