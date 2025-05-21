@@ -142,6 +142,8 @@ int initial_reading() {
     int length_seq = 0;
     int number_bases_seq = 0;
 
+    int number_cg = 0;
+
     // Open input file
     file = fopen(path_input_file, "r");
     if (file == NULL) {
@@ -163,6 +165,7 @@ int initial_reading() {
                 data_all_sequences[index_data_sequences].end_sequence = index_file - 1;
                 data_all_sequences[index_data_sequences].length_sequence = length_seq;
                 data_all_sequences[index_data_sequences].number_bases = number_bases_seq;
+                data_all_sequences[index_data_sequences].cg_content = number_cg;
 
                 if (number_bases_seq > max_number_bases){ // Update longest sequence
                     max_number_bases = number_bases_seq;
@@ -200,11 +203,17 @@ int initial_reading() {
             data_all_sequences[index_data_sequences].end_header = index_file;
             length_seq = 0;
             number_bases_seq = 0;
+            number_cg = 0;
 
         } else { // Is part of the sequence, increment sequence length and number of bases
             if ((char)ch != '\n') {
                 number_bases_seq ++;
+
+                if ((char)ch == 'c' || (char)ch == 'C' || (char)ch == 'g' || (char)ch == 'G' ) {
+                    number_cg ++;
+                }
             }
+
             length_seq ++;
         }
 
@@ -215,6 +224,8 @@ int initial_reading() {
     data_all_sequences[index_data_sequences].end_sequence = index_file-1; 
     data_all_sequences[index_data_sequences].length_sequence = length_seq;
     data_all_sequences[index_data_sequences].number_bases = number_bases_seq;
+    data_all_sequences[index_data_sequences].cg_content = number_cg;
+
 
     if (number_bases_seq > max_number_bases){
         max_number_bases = number_bases_seq;
@@ -282,25 +293,44 @@ int read_file_partially (int start_pos, int end_pos, char *file_name, char **con
 
 }
 
-// TODO - Calculates the distances between sequences set by the user
-float* get_sequence_distance(char *content_sequence, int lenght_sequence){
+// Calculates the distances between sequences set by the user (returns the probability of a given subsequence being the subseuqence set by the user)
+float get_sequence_distance(char *content_sequence, char *subsequence, int number_bases_content_sequence){
 
-    
+    int number_times_subsequence_found = 0;
+    int sum_distances = 0;
 
-    float *sequence_distances = malloc(number_sequences_calc_distance * sizeof(float));
+    int aux_distances = 0;
 
-    for (int i = 0; i < number_sequences_calc_distance; i++){
-        printf("pos %d - val %f\n", i, sequence_distances[i]);
+    for (int i = 0; i < strlen(content_sequence) - strlen(subsequence) + 1; i++) {
+
+        if (content_sequence[i] == subsequence[0]){ // If current position is the begining of the subsequence, seek the rest
+
+            int is_match = 1;
+
+            for (int j = 1; j < strlen(subsequence); j++) { //Seeking the rest
+
+                if (content_sequence[i+j] != subsequence[j]) {
+                    is_match = 0;
+                }
+
+            }
+
+            if (is_match == 1) { // If at the end of the matching it is still true, then add a new match to the sum_distances and number_of_sequences_found
+                number_times_subsequence_found ++; 
+            }
+
+        } 
 
     }
 
+    int number_possibilities = number_bases_content_sequence - strlen(subsequence) + 1;
 
-
-
+    return (float) number_times_subsequence_found / number_possibilities;
+    
 }
 
 // Get the CG content of a sequence
-float get_cg_content(char *content_sequence, int lenght_sequence, int number_bases){
+/*float get_cg_content(char *content_sequence, int lenght_sequence, int number_bases){
 
     int number_cg = 0;
 
@@ -315,7 +345,7 @@ float get_cg_content(char *content_sequence, int lenght_sequence, int number_bas
 
     // Return the normalized CG content of the sequence 
     return (double)number_cg / number_bases;
-}
+}*/
 
 // Write the results to the output file (.tsv format)
 int write_to_file(char* results){
@@ -337,7 +367,7 @@ int write_to_file(char* results){
 
         char *first_line = malloc(sizeof(sequences_calc_distance) + 1000); // TODO - this may give some problems in the future depending on the number of sequences to seek distance   
         
-        first_line = concatenate_strings(first_line, "Sequence id", 0);
+        sprintf(first_line, "%s", "Sequence id");  
         if (calculate_size == 1) {
             first_line = concatenate_strings(first_line, "Sequence size", 1);
             first_line = concatenate_strings(first_line, "Normalized sequence size", 1);
@@ -382,16 +412,7 @@ int worker_task(int index_data_sequence){
     pthread_mutex_unlock(&input_file_mutex);
 
     // Remove the \n and \t from the headers
-    char* read_header = malloc(strlen(aux_header) +1);
-    int number_positions_read_header = 0;
-
-    for (int i = 0; i < strlen(aux_header); i++){
-        if (aux_header[i] != '\n' && aux_header[i] != '\t'){ // Remove \n and \t from the headers
-            read_header[number_positions_read_header] = aux_header[i];
-            number_positions_read_header++;
-        }
-    }
-    read_header[number_positions_read_header] = '\0';
+    char *read_header = remove_newline_and_tab_characters(aux_header);
 
     //Initial and end position of the sequence   
     int start_pos_sequence = end_pos_header + 1;  // Start position in the file
@@ -400,8 +421,12 @@ int worker_task(int index_data_sequence){
     // Get sequence
     pthread_mutex_lock(&input_file_mutex);
     read_file_partially(start_pos_sequence, end_pos_sequence, path_input_file, &content_sequence);
-    char* read_sequence = content_sequence;
+    char* aux_sequence = content_sequence;
     pthread_mutex_unlock(&input_file_mutex);
+
+    // Remove \n characters from sequence
+    char *read_sequence = remove_newline_and_tab_characters(aux_sequence);
+    
 
     // Allocate the space required to store the results
     char *results = malloc(strlen(read_header) + sizeof(int) + sizeof(float) * (2 + number_sequences_calc_distance) + 100); // 100 more positions are assigned to avoid errors 
@@ -420,16 +445,17 @@ int worker_task(int index_data_sequence){
     }
 
     if (calculate_gc_content == 1){
-        float cg_content = get_cg_content(read_sequence, data_all_sequences[index_data_sequence].length_sequence, data_all_sequences[index_data_sequence].number_bases);
+        float cg_content = (float) data_all_sequences[index_data_sequence].cg_content / data_all_sequences[index_data_sequence].number_bases;
         results = concatenate_strings(results, float_to_string(cg_content), 1);
     }
 
     if (sequences_calc_distance != NULL) {
-        float* sequence_distances = get_sequence_distance(read_sequence, data_all_sequences[index_data_sequence].length_sequence);
-
+        
         // Copy results for each sub sequence considered
         for (int i = 0; i < number_sequences_calc_distance; i++){
-            results = concatenate_strings(results, float_to_string(sequence_distances[i]), 1);
+
+            float sequence_distance = get_sequence_distance(read_sequence, sequences_calc_distance[i], data_all_sequences[index_data_sequence].number_bases);
+            results = concatenate_strings(results, float_to_string(sequence_distance), 1);
         }
         
     }
