@@ -28,6 +28,7 @@ int number_tasks_assigned = 0;
 int number_pos_data_sequence = 10;
 int calculate_compression = 0;
 int max_number_bases = 0;
+int verbose = 0;
 
 pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -44,6 +45,7 @@ void program_usage(char *prog_path) {
     printf("-c\t\tCalculates the compressibility of the sequences (Markov models).\n");
     printf("-d\t\tSet a sequence to calculate the distance.\n");
     printf("-t\t\tSets the number of threads.\n");
+    printf("-v\t\tVerbose mode - disables progress bar and prints the results.\n");
 }
 
 // Gets the options selected by the user
@@ -59,7 +61,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt(argc, argv, "hi:o:sgcd:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "hi:o:sgcd:t:v")) != -1) {
         
         switch (opt) {
             case 'h': 
@@ -95,6 +97,9 @@ int option_parsing(int argc, char *argv[]) {
                     program_usage(prog_path);
                     return 1;
                 }
+                break;
+            case 'v':
+                verbose = 1;
                 break;
             case '?':
                 program_usage(prog_path);
@@ -298,8 +303,7 @@ float get_sequence_distance(char *content_sequence, char *subsequence, int numbe
 
     int number_times_subsequence_found = 0;
     int sum_distances = 0;
-
-    int aux_distances = 0;
+    int last_pos = 0;
 
     for (int i = 0; i < strlen(content_sequence) - strlen(subsequence) + 1; i++) {
 
@@ -317,35 +321,34 @@ float get_sequence_distance(char *content_sequence, char *subsequence, int numbe
 
             if (is_match == 1) { // If at the end of the matching it is still true, then add a new match to the sum_distances and number_of_sequences_found
                 number_times_subsequence_found ++; 
+                if (last_pos == 0){
+                    last_pos = i;
+                } else {
+                    int diff = i - last_pos;
+                    sum_distances += diff;
+                    last_pos = i;
+                    
+                } 
             }
 
         } 
 
     }
 
+    printf("Sum pos = %d  %d \n", sum_distances, number_bases_content_sequence);
+
     int number_possibilities = number_bases_content_sequence - strlen(subsequence) + 1;
 
-    return (float) number_times_subsequence_found / number_possibilities;
+    if (number_times_subsequence_found == 0) {
+        return number_possibilities;
+    } else {
+        return (float) number_possibilities / number_times_subsequence_found ;
+    }
+
+    
     
 }
 
-// Get the CG content of a sequence
-/*float get_cg_content(char *content_sequence, int lenght_sequence, int number_bases){
-
-    int number_cg = 0;
-
-    for (int i = 0; i < lenght_sequence; i++){
-
-        // Count the number of C and G bases in the sequence
-        if (content_sequence[i] == 'c' || content_sequence[i] == 'C' || content_sequence[i] == 'g' || content_sequence[i] == 'G') {
-            number_cg ++;
-        }
-
-    }
-
-    // Return the normalized CG content of the sequence 
-    return (double)number_cg / number_bases;
-}*/
 
 // Write the results to the output file (.tsv format)
 int write_to_file(char* results){
@@ -469,8 +472,12 @@ int worker_task(int index_data_sequence){
     write_to_file(results);
     pthread_mutex_unlock(&output_file_mutex);
     
-    // Update the progress bar
-    progress_bar(number_sequences);
+    
+    if (verbose == 0){ // Update the progress bar
+        progress_bar(number_sequences);
+    } else { // Print the results
+        printf("%s\n", results);
+    }
     return 0;
 
 }
@@ -528,10 +535,10 @@ int main(int argc, char *argv[]) {
     initial_reading();
 
     // This may not be necessary
-    if (number_of_threads > number_sequences){
+    /*if (number_of_threads > number_sequences){
         number_of_threads = number_sequences;
         printf("Number of threads was set to %d due to there only being %d sequences in the input file.\n", number_of_threads, number_sequences);
-    }
+    }*/
 
     pthread_t threads[number_of_threads];  // Array to hold thread IDs
     int thread_ids[number_of_threads];     // Array to hold thread arguments
