@@ -12,6 +12,11 @@ typedef struct {
     int cg_content;
 } Seq_data;
 
+typedef struct {
+    int sum_distance;
+    float prob_sequence;
+} Dist_Prob_sequence;
+
 int tasks_done = 0;
 pthread_mutex_t tasks_done_mutex = PTHREAD_MUTEX_INITIALIZER;
 

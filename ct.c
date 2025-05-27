@@ -27,6 +27,7 @@ int number_sequences = 0;
 int number_tasks_assigned = 0;
 int number_pos_data_sequence = 10;
 int calculate_compression = 0;
+int compression_geco;
 int max_number_bases = 0;
 int verbose = 0;
 
@@ -34,18 +35,36 @@ pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+int option_index = 0;
+
+static struct option long_options[] = {
+    {"help", no_argument, 0, 'h'},
+    {"input", required_argument, 0, 'i'},
+    {"output", required_argument, 0, 'o'},
+    {"size", no_argument, 0, 's'},
+    {"gc_content", no_argument, 0, 'g'},
+    {"compression", no_argument, 0, 'c'},
+    {"experiment", no_argument, 0, 'x'},
+    {"distance", required_argument, 0, 'd'},
+    {"threads", required_argument, 0, 't'},
+    {"verbose", no_argument, 0, 'v'}
+};
+
 // Print help menu
 void program_usage(char *prog_path) {
-    printf("\nUSAGE: .%s -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...\n", strrchr(prog_path, '/'));
-    printf("-h\t\tPrints this message\n");
-    printf("-i\t\tSet input file (FASTA format).\n");
-    printf("-o\t\tSet the output file (tsv format).\n");
-    printf("-s\t\tCalculates the size and the normalized size of the sequences.\n");
-    printf("-g\t\tCalculates the GC content.\n");
-    printf("-c\t\tCalculates the compressibility of the sequences (Markov models).\n");
-    printf("-d\t\tSet a sequence to calculate the distance.\n");
-    printf("-t\t\tSets the number of threads.\n");
-    printf("-v\t\tVerbose mode - disables progress bar and prints the results.\n");
+    printf("\nUSAGE: .%s -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...\n\n", strrchr(prog_path, '/'));
+    printf("Short\tLong version\tCommand use\n");
+    printf("--------------------------------------------------------------------------------------------\n");
+    printf("-h\t--help\t\tPrints this message\n");
+    printf("-i\t--input\t\tSet input file (FASTA format).\n");
+    printf("-o\t--output\tSet the output file (tsv format).\n");
+    printf("-s\t--size\t\tCalculates the size and the normalized size of the sequences.\n");
+    printf("-g\t--gc_content\tCalculates the GC content.\n");
+    printf("-c\t--compression\tCalculates the compressibility of the sequences (Markov models).\n");
+    printf("-x\t--experiment\tCalculates the compressibility of the sequences (GeCo).\n");
+    printf("-d\t--distance\tSet a sequence to calculate the distance.\n");
+    printf("-t\t--threads\tSets the number of threads.\n");
+    printf("-v\t--verbose\tVerbose mode - disables progress bar and prints the results.\n");
 }
 
 // Gets the options selected by the user
@@ -61,7 +80,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt(argc, argv, "hi:o:sgcd:t:v")) != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:o:sgcxd:t:v", long_options, &option_index))  != -1) {
         
         switch (opt) {
             case 'h': 
@@ -85,6 +104,9 @@ int option_parsing(int argc, char *argv[]) {
                 break;
             case 'c':
                 calculate_compression = 1;
+                break;
+            case 'x':
+                compression_geco = 1;
                 break;
             case 'd':
                 sequences_calc_distance = append(sequences_calc_distance, number_sequences_calc_distance, optarg);
@@ -299,11 +321,13 @@ int read_file_partially (int start_pos, int end_pos, char *file_name, char **con
 }
 
 // Calculates the distances between sequences set by the user (returns the probability of a given subsequence being the subseuqence set by the user)
-float get_sequence_distance(char *content_sequence, char *subsequence, int number_bases_content_sequence){
+Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequence, int number_bases_content_sequence){
 
     int number_times_subsequence_found = 0;
     int sum_distances = 0;
     int last_pos = 0;
+    Dist_Prob_sequence results;
+
 
     for (int i = 0; i < strlen(content_sequence) - strlen(subsequence) + 1; i++) {
 
@@ -311,7 +335,7 @@ float get_sequence_distance(char *content_sequence, char *subsequence, int numbe
 
             int is_match = 1;
 
-            for (int j = 1; j < strlen(subsequence); j++) { //Seeking the rest
+            for (int j = 1; j < strlen(subsequence); j++) { // Seeking the rest of the sequence
 
                 if (content_sequence[i+j] != subsequence[j]) {
                     is_match = 0;
@@ -320,30 +344,33 @@ float get_sequence_distance(char *content_sequence, char *subsequence, int numbe
             }
 
             if (is_match == 1) { // If at the end of the matching it is still true, then add a new match to the sum_distances and number_of_sequences_found
-                number_times_subsequence_found ++; 
-                if (last_pos == 0){
-                    last_pos = i;
-                } else {
-                    int diff = i - last_pos;
-                    sum_distances += diff;
-                    last_pos = i;
-                    
-                } 
+
+                if (number_times_subsequence_found != 0) {
+                    sum_distances += i;
+                }
+
+                number_times_subsequence_found ++;
+                
             }
 
         } 
 
     }
 
+    if (number_times_subsequence_found == 0 || number_times_subsequence_found == 1){
+        sum_distances = number_bases_content_sequence; 
+    }
+
+    results.sum_distance = sum_distances;
+    
+
     printf("Sum pos = %d  %d \n", sum_distances, number_bases_content_sequence);
 
     int number_possibilities = number_bases_content_sequence - strlen(subsequence) + 1;
 
-    if (number_times_subsequence_found == 0) {
-        return number_possibilities;
-    } else {
-        return (float) number_possibilities / number_times_subsequence_found ;
-    }
+    results.prob_sequence = (float) number_times_subsequence_found / number_possibilities;
+
+    return results;
 
     
     
@@ -384,7 +411,11 @@ int write_to_file(char* results){
             }
         }
         if (calculate_compression == 1) {
-            first_line = concatenate_strings(first_line, "Compression rate", 1);
+            first_line = concatenate_strings(first_line, "Compression rate (Markov models)", 1);
+        }
+
+        if (compression_geco == 1) {
+            first_line = concatenate_strings(first_line, "Compression rate (GeCo3)", 1);
         }
 
         fprintf(file, "%s\n", first_line);  // Write the first line to the file
@@ -395,6 +426,73 @@ int write_to_file(char* results){
     fclose(file); // Close the file
 
     return 0;
+
+}
+
+float calculate_compression_rate_geco (char * sequence_read, int id) {
+    FILE *file_seq;
+    char filename_uncompressed[100];
+    char filename_compressed[100];
+    char logs_file[100];
+    char command_geco[512];
+
+    // Prepare filenames
+    sprintf(filename_uncompressed, "sequence_%d.seq", id);
+    sprintf(filename_compressed, "sequence_%d.seq.co", id);
+    sprintf(logs_file, "logs_%d.txt", id);
+
+    // Open file for writing
+    file_seq = fopen(filename_uncompressed, "w");
+    if (!file_seq) {
+        perror("Failed to open uncompressed file");
+        return -1;
+    }
+
+    // Write content
+    fprintf(file_seq, "%s\n", sequence_read);
+    fclose(file_seq);  // Flush and close before checking size
+
+    // Get size of uncompressed file
+    file_seq = fopen(filename_uncompressed, "rb");
+    if (!file_seq) {
+        perror("Failed to open uncompressed file for size");
+        return -1;
+    }
+    fseek(file_seq, 0, SEEK_END);
+    long initial_size = ftell(file_seq);
+    fclose(file_seq);
+
+    // Build GeCo3 command
+    snprintf(command_geco, sizeof(command_geco),
+        "GeCo3 -tm 1:1:0:1:0.9/0:0:0 -tm 7:10:0:1:0/0:0:0 -tm 16:100:1:10:0/3:10:0.9 -lr 0.03 -hs 64 %s > %s 2>&1",
+        filename_uncompressed, logs_file);
+
+    // Run the command
+    int ret = system(command_geco);
+    if (ret != 0) {
+        fprintf(stderr, "GeCo3 command failed with return code %d\n", ret);
+        return -1;
+    }
+
+    // Open compressed file and get size
+    file_seq = fopen(filename_compressed, "rb");
+    if (!file_seq) {
+        perror("Failed to open compressed file");
+        return -1;
+    }
+    fseek(file_seq, 0, SEEK_END);
+    long compressed_size = ftell(file_seq);
+    fclose(file_seq);
+
+    // Clean up files
+    remove(filename_compressed);
+    remove(filename_uncompressed);
+    remove(logs_file);
+
+    // Return compression ratio
+
+    //printf("%ld  %ld\n\n", compressed_size, initial_size);
+    return (float) compressed_size / initial_size;
 
 }
 
@@ -457,14 +555,24 @@ int worker_task(int index_data_sequence){
         // Copy results for each sub sequence considered
         for (int i = 0; i < number_sequences_calc_distance; i++){
 
-            float sequence_distance = get_sequence_distance(read_sequence, sequences_calc_distance[i], data_all_sequences[index_data_sequence].number_bases);
-            results = concatenate_strings(results, float_to_string(sequence_distance), 1);
+            Dist_Prob_sequence sequence_data = get_sequence_distance(read_sequence, sequences_calc_distance[i], data_all_sequences[index_data_sequence].number_bases);
+            int sequence_distance = sequence_data.sum_distance;
+            float sequence_probability = sequence_data.prob_sequence;
+            
+            results = concatenate_strings(results, int_to_string(sequence_distance), 1);
+            results = concatenate_strings(results, float_to_string(sequence_probability), 1);
         }
         
     }
 
     if (calculate_compression == 1) {
         printf("TODO");
+    }
+    
+    if (compression_geco == 1) {
+        float compression_rate_geco = calculate_compression_rate_geco(read_sequence, index_data_sequence);
+        results = concatenate_strings(results, float_to_string(compression_rate_geco), 1);
+
     }
 
     // Write results to file
