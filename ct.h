@@ -13,7 +13,7 @@ typedef struct {
 } Seq_data;
 
 typedef struct {
-    int sum_distance;
+    float avg_distance;
     float prob_sequence;
 } Dist_Prob_sequence;
 

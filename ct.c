@@ -327,52 +327,57 @@ Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequen
     int sum_distances = 0;
     int last_pos = 0;
     Dist_Prob_sequence results;
+    int number_possibilities = number_bases_content_sequence - strlen(subsequence) + 1; 
 
+    if (strlen(subsequence) < strlen(content_sequence)){ // If the subsequence is valid lengthwise
+        
+        for (int i = 0; i < strlen(content_sequence) - strlen(subsequence) + 1; i++) {
 
-    for (int i = 0; i < strlen(content_sequence) - strlen(subsequence) + 1; i++) {
+            if (content_sequence[i] == subsequence[0]){ // If current position is the begining of the subsequence, seek the rest
 
-        if (content_sequence[i] == subsequence[0]){ // If current position is the begining of the subsequence, seek the rest
+                int is_match = 1;
 
-            int is_match = 1;
+                for (int j = 1; j < strlen(subsequence); j++) { // Seeking the rest of the sequence
 
-            for (int j = 1; j < strlen(subsequence); j++) { // Seeking the rest of the sequence
+                    if (content_sequence[i+j] != subsequence[j]) {
+                        is_match = 0;
+                    }
 
-                if (content_sequence[i+j] != subsequence[j]) {
-                    is_match = 0;
                 }
 
-            }
+                if (is_match == 1) { // If at the end of the matching it is still true, then add a new match to the sum_distances and number_of_sequences_found
 
-            if (is_match == 1) { // If at the end of the matching it is still true, then add a new match to the sum_distances and number_of_sequences_found
+                    if (number_times_subsequence_found != 0) {
+                        sum_distances = i;
+                    }
 
-                if (number_times_subsequence_found != 0) {
-                    sum_distances += i;
+                    number_times_subsequence_found ++;
+                    
                 }
 
-                number_times_subsequence_found ++;
-                
-            }
+            } 
 
-        } 
+        }
 
-    }
 
-    if (number_times_subsequence_found == 0 || number_times_subsequence_found == 1){
-        sum_distances = number_bases_content_sequence; 
-    }
+        if (number_times_subsequence_found == 0){ // Error - no sequence found
+            results.avg_distance = number_possibilities;
+            results.prob_sequence = 0;
+        } else {
+            results.avg_distance = (float) sum_distances / number_times_subsequence_found;          
+            results.prob_sequence = (float) number_times_subsequence_found / number_possibilities;
+        }
 
-    results.sum_distance = sum_distances;
+        //printf("%f    %f\n", results.avg_distance , results.prob_sequence);
     
+    } else { // Subsequence not valid lengthwise
 
-    printf("Sum pos = %d  %d \n", sum_distances, number_bases_content_sequence);
+        results.avg_distance = strlen(content_sequence);
+        results.prob_sequence = 0;
 
-    int number_possibilities = number_bases_content_sequence - strlen(subsequence) + 1;
-
-    results.prob_sequence = (float) number_times_subsequence_found / number_possibilities;
+    }
 
     return results;
-
-    
     
 }
 
@@ -381,6 +386,7 @@ Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequen
 int write_to_file(char* results){
 
     FILE *file;
+    char column_name[150]; 
 
     if (access(output_path, F_OK) == 0) { // If the output file exists, append the results
         file = fopen(output_path, "a");
@@ -407,7 +413,13 @@ int write_to_file(char* results){
         }
         if (sequences_calc_distance != NULL) {
             for (int i = 0; i < number_sequences_calc_distance; i++){
-                first_line = concatenate_strings(first_line, sequences_calc_distance[i], 1);
+                
+                sprintf(column_name, "Avg_distance_%s", sequences_calc_distance[i]);
+                first_line = concatenate_strings(first_line, column_name, 1);
+
+                sprintf(column_name, "Prob_sequence_%s", sequences_calc_distance[i]);
+                first_line = concatenate_strings(first_line, column_name, 1);
+
             }
         }
         if (calculate_compression == 1) {
@@ -556,10 +568,10 @@ int worker_task(int index_data_sequence){
         for (int i = 0; i < number_sequences_calc_distance; i++){
 
             Dist_Prob_sequence sequence_data = get_sequence_distance(read_sequence, sequences_calc_distance[i], data_all_sequences[index_data_sequence].number_bases);
-            int sequence_distance = sequence_data.sum_distance;
+            float avg_sequence_distance = sequence_data.avg_distance;
             float sequence_probability = sequence_data.prob_sequence;
             
-            results = concatenate_strings(results, int_to_string(sequence_distance), 1);
+            results = concatenate_strings(results, float_to_string(avg_sequence_distance), 1);
             results = concatenate_strings(results, float_to_string(sequence_probability), 1);
         }
         
