@@ -29,6 +29,7 @@ int number_pos_data_sequence = 10;
 int calculate_compression = 0;
 int compression_geco;
 int max_number_bases = 0;
+int help_menu = 0;
 int verbose = 0;
 
 pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -53,18 +54,19 @@ static struct option long_options[] = {
 // Print help menu
 void program_usage(char *prog_path) {
     printf("\nUSAGE: .%s -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...\n\n", strrchr(prog_path, '/'));
-    printf("Short\tLong version\tCommand use\n");
-    printf("--------------------------------------------------------------------------------------------\n");
-    printf("-h\t--help\t\tPrints this message\n");
-    printf("-i\t--input\t\tSet input file (FASTA format).\n");
-    printf("-o\t--output\tSet the output file (tsv format).\n");
-    printf("-s\t--size\t\tCalculates the size and the normalized size of the sequences.\n");
-    printf("-g\t--gc_content\tCalculates the GC content.\n");
-    printf("-c\t--compression\tCalculates the compressibility of the sequences (Markov models).\n");
-    printf("-x\t--experiment\tCalculates the compressibility of the sequences (GeCo).\n");
-    printf("-d\t--distance\tSet a sequence to calculate the distance.\n");
-    printf("-t\t--threads\tSets the number of threads.\n");
-    printf("-v\t--verbose\tVerbose mode - disables progress bar and prints the results.\n");
+    printf("Program options -------------------------------------------------- ------------------------\n");
+    printf("-h, --help\t\tPrints this message\n");
+    printf("-i, --input\t\tSet input file (FASTA format).\n");
+    printf("-o, --output\t\tSet the output file (tsv format).\n");
+    printf("-s, --size\t\tCalculates the size and the normalized size of the sequences.\n");
+    printf("-g, --gc_content\tCalculates the GC content.\n");
+    printf("-c, --compression\tCalculates the compressibility of the sequences (Markov models).\n");
+    printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo).\n");
+    printf("-d, --distance\t\tSet a sequence to calculate the distance.\n");
+    printf("-t, --threads\t\tSets the number of threads.\n");
+    printf("-v, --verbose\t\tVerbose mode - disables progress bar and prints the results.\n");
+
+    help_menu = 1;
 }
 
 // Gets the options selected by the user
@@ -643,6 +645,8 @@ int main(int argc, char *argv[]) {
     if (return_code == 1) {
         printf("Error - Execution unsuccessful.\n");
         exit(1);  // Exit with error status
+    } else if (help_menu == 1) {
+        exit(0);
     }
 
     // If the input file does not exist, exit

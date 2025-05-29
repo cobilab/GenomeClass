@@ -19,14 +19,18 @@ This will print the following options:
 
 ```
 USAGE: ./a.out -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...
--h              Prints this message
--i              Set input file (FASTA format).
--o              Set the output file (tsv format).
--s              Calculates the size and the normalized size of the sequences.
--g              Calculates the GC content.
--c              Calculates the compressibility of the sequences (Markov models).
--d              Set a sequence to calculate the distance.
--t              Sets the number of threads.
+
+Program options -------------------------------------------------- ------------------------
+-h, --help              Prints this message
+-i, --input             Set input file (FASTA format).
+-o, --output            Set the output file (tsv format).
+-s, --size              Calculates the size and the normalized size of the sequences.
+-g, --gc_content        Calculates the GC content.
+-c, --compression       Calculates the compressibility of the sequences (Markov models).
+-x, --experiment        Calculates the compressibility of the sequences (GeCo).
+-d, --distance          Set a sequence to calculate the distance.
+-t, --threads           Sets the number of threads.
+-v, --verbose           Verbose mode - disables progress bar and prints the results.
 ```
 
 ### CITATION ###
