@@ -260,6 +260,8 @@ int initial_reading() {
         max_number_bases = number_bases_seq;
     }
 
+    printf("Max number bases %d\n\n", max_number_bases);
+
     fclose(file);  // Close the file
 
     number_sequences = index_data_sequences + 1;
@@ -405,13 +407,13 @@ int write_to_file(char* results){
 
         char *first_line = malloc(sizeof(sequences_calc_distance) + 1000); // TODO - this may give some problems in the future depending on the number of sequences to seek distance   
         
-        sprintf(first_line, "%s", "Sequence id");  
+        sprintf(first_line, "%s", "Sequence_id");  
         if (calculate_size == 1) {
-            first_line = concatenate_strings(first_line, "Sequence size", 1);
-            first_line = concatenate_strings(first_line, "Normalized sequence size", 1);
+            first_line = concatenate_strings(first_line, "Sequence_size", 1);
+            first_line = concatenate_strings(first_line, "Normalized_sequence_size", 1);
         }
         if (calculate_gc_content == 1) {
-            first_line = concatenate_strings(first_line, "CG content", 1);
+            first_line = concatenate_strings(first_line, "CG_content", 1);
         }
         if (sequences_calc_distance != NULL) {
             for (int i = 0; i < number_sequences_calc_distance; i++){
@@ -425,11 +427,11 @@ int write_to_file(char* results){
             }
         }
         if (calculate_compression == 1) {
-            first_line = concatenate_strings(first_line, "Compression rate (Markov models)", 1);
+            first_line = concatenate_strings(first_line, "Compression_rate_(Markov_models)", 1);
         }
 
         if (compression_geco == 1) {
-            first_line = concatenate_strings(first_line, "Compression rate (GeCo3)", 1);
+            first_line = concatenate_strings(first_line, "Compression_rate_(GeCo3)", 1);
         }
 
         fprintf(file, "%s\n", first_line);  // Write the first line to the file
@@ -556,7 +558,7 @@ int worker_task(int index_data_sequence){
 
         // Copy results
         results = concatenate_strings(results, int_to_string(size_sequence), 1);
-        results = concatenate_strings(results, float_to_string(size_sequence), 1);
+        results = concatenate_strings(results, float_to_string(size_sequence_normalized), 1);
     }
 
     if (calculate_gc_content == 1){
