@@ -11,7 +11,7 @@ gcc -O3 genoclass.c -pthread
 ./GenoClass -i Samples/genoclass.fasta
 </pre>
 
-To see the possible reconstruction options type
+To see the possible execution options type
 <pre>
 ./GenoClass -h
 </pre>
