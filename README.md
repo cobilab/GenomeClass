@@ -6,7 +6,7 @@ A tool for the analysis and classification of genome sequences in the FASTA form
 Run the whole experiment in a Linux system with:
 <pre>
 git clone https://github.com/mirakaya/GenoClass
-cd GenoClass/../
+cd GenoClass/src/
 gcc -O3 genoclass.c -pthread
 ./GenoClass -i Samples/genoclass.fasta
 </pre>
