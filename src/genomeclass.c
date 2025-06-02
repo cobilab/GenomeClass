@@ -445,6 +445,18 @@ int write_to_file(char* results){
 
 }
 
+long int get_size_file(char* file_name) {
+
+    // Open compressed file and get size
+    FILE *fp = fopen(file_name, "rb"); // open in binary mode
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fclose(fp);
+
+    return size;
+
+}
+
 float calculate_compression_rate_geco (char * sequence_read, int id) {
     FILE *file_seq;
     char filename_uncompressed[100];
@@ -468,15 +480,9 @@ float calculate_compression_rate_geco (char * sequence_read, int id) {
     fprintf(file_seq, "%s\n", sequence_read);
     fclose(file_seq);  // Flush and close before checking size
 
+
     // Get size of uncompressed file
-    file_seq = fopen(filename_uncompressed, "rb");
-    if (!file_seq) {
-        perror("Failed to open uncompressed file for size");
-        return -1;
-    }
-    fseek(file_seq, 0, SEEK_END);
-    long initial_size = ftell(file_seq);
-    fclose(file_seq);
+    long int initial_size = get_size_file(filename_uncompressed);
 
     // Build GeCo3 command
     snprintf(command_geco, sizeof(command_geco),
@@ -490,15 +496,8 @@ float calculate_compression_rate_geco (char * sequence_read, int id) {
         return -1;
     }
 
-    // Open compressed file and get size
-    file_seq = fopen(filename_compressed, "rb");
-    if (!file_seq) {
-        perror("Failed to open compressed file");
-        return -1;
-    }
-    fseek(file_seq, 0, SEEK_END);
-    long compressed_size = ftell(file_seq);
-    fclose(file_seq);
+    // Get size of uncompressed file
+    long int compressed_size = get_size_file(filename_compressed);
 
     // Clean up files
     remove(filename_compressed);
@@ -508,6 +507,7 @@ float calculate_compression_rate_geco (char * sequence_read, int id) {
     // Return compression ratio
 
     //printf("%ld  %ld\n\n", compressed_size, initial_size);
+    //printf("Results geco3 - %ld  %ld   %f\n\n", compressed_size, initial_size, (float) compressed_size / initial_size);
     return (float) compressed_size / initial_size;
 
 }

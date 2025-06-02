@@ -21,7 +21,7 @@ def import_files(filename, name_pickle):  # import the csv file
 
 	print(data)
 
-	data.to_pickle(name_pickle)
+	#data.to_pickle(name_pickle)
 
 	return data
 
@@ -283,7 +283,7 @@ if __name__ == '__main__':
 	# cross_validation_GradientBoostingRegression(X_train, y_train, X_test)
 
 	# train and save models
-	mlp_model = KNeighborsClassifier()
+	mlp_model = RandomForestClassifier(random_state=42)
 	fit_and_predict(mlp_model, "mlp_model", True)
 	#fit_and_predict(mlp_model, "mlp_model", False)
 
