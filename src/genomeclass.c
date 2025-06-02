@@ -11,7 +11,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "genoclass.h"
+#include "genomeclass.h"
 
 
 // Global variables

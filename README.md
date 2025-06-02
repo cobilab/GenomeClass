@@ -1,25 +1,25 @@
-# GenoClass
+# GenomeClass
 A tool for the analysis and classification of genome sequences in the FASTA format.
 
 ### REPLICATION ###
 
 Run the whole experiment in a Linux system with:
 <pre>
-git clone https://github.com/mirakaya/GenoClass
-cd GenoClass/src/
-gcc -O3 genoclass.c -pthread
-./GenoClass -i Samples/genoclass.fasta
+git clone https://github.com/mirakaya/GenomeClass
+cd GenomeClass/src/
+gcc -O3 genomeclass.c -pthread
+./GenomeClass -i Samples/genomeclass.fasta
 </pre>
 
 To see the possible execution options type
 <pre>
-./GenoClass -h
+./GenomeClass -h
 </pre>
 
 This will print the following options:
 
 ```
-USAGE: ./GenoClass -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...
+USAGE: ./GenomeClass -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...
 
 Program options -------------------------------------------------- ------------------------
 -h, --help              Prints this message
@@ -42,7 +42,7 @@ On using this software/method please cite:
 
 ### ISSUES ###
 
-For any issue let us know at [issues link](https://github.com/mirakaya/GenoClass/issues).
+For any issue let us know at [issues link](https://github.com/mirakaya/GenomeClass/issues).
 
 ### LICENSE ###
 
