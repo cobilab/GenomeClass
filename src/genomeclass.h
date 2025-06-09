@@ -101,7 +101,7 @@ char *remove_newline_and_tab_characters(char *text_to_clean){
     char* aux = malloc(strlen(text_to_clean) +1);
     int number_positions = 0;
 
-    for (int i = 0; i < strlen(text_to_clean); i++){
+    for (size_t i = 0; i < strlen(text_to_clean); i++) {
         if (text_to_clean[i] != '\n' && text_to_clean[i] != '\t'){ // Remove \n and \t from the headers
             aux[number_positions] = text_to_clean[i];
             number_positions++;
@@ -112,5 +112,4 @@ char *remove_newline_and_tab_characters(char *text_to_clean){
     return aux;
 
 }
-
 

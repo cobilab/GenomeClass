@@ -12,6 +12,10 @@
 #include <unistd.h>
 
 #include "genomeclass.h"
+#include "alphabet.h"
+#include "buffer.h"
+#include "context.h"
+#include "math.h"
 
 
 // Global variables
@@ -25,12 +29,13 @@ int calculate_gc_content = 0;
 Seq_data *data_all_sequences = NULL;
 int number_sequences = 0;
 int number_tasks_assigned = 0;
-int number_pos_data_sequence = 10;
+int number_pos_data_sequence = 10000;
 int calculate_compression = 0;
 int compression_geco;
 int max_number_bases = 0;
 int help_menu = 0;
 int verbose = 0;
+int calculate_entropy = 0;
 
 pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -44,11 +49,13 @@ static struct option long_options[] = {
     {"output", required_argument, 0, 'o'},
     {"size", no_argument, 0, 's'},
     {"gc_content", no_argument, 0, 'g'},
-    {"compression", no_argument, 0, 'c'},
+    {"normalized_compression", no_argument, 0, 'c'},
+    {"entropy", no_argument, 0, 'e'},
     {"experiment", no_argument, 0, 'x'},
     {"distance", required_argument, 0, 'd'},
     {"threads", required_argument, 0, 't'},
-    {"verbose", no_argument, 0, 'v'}
+    {"verbose", no_argument, 0, 'v'},
+    {0, 0, 0, 0}
 };
 
 // Print help menu
@@ -61,6 +68,7 @@ void program_usage(char *prog_path) {
     printf("-s, --size\t\tCalculates the size and the normalized size of the sequences.\n");
     printf("-g, --gc_content\tCalculates the GC content.\n");
     printf("-c, --compression\tCalculates the compressibility of the sequences (Markov models).\n");
+    printf("-e, --entropy\t\tCalculates the entropy of the seuqences.\n");
     printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo).\n");
     printf("-d, --distance\t\tSet a sequence to calculate the distance.\n");
     printf("-t, --threads\t\tSets the number of threads.\n");
@@ -82,7 +90,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt_long(argc, argv, "hi:o:sgcxd:t:v", long_options, &option_index))  != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:o:sgcexd:t:v", long_options, &option_index))  != -1) {
         
         switch (opt) {
             case 'h': 
@@ -106,6 +114,9 @@ int option_parsing(int argc, char *argv[]) {
                 break;
             case 'c':
                 calculate_compression = 1;
+                break;
+            case 'e':
+                calculate_entropy = 1;
                 break;
             case 'x':
                 compression_geco = 1;
@@ -271,58 +282,65 @@ int initial_reading() {
 
 }
 
-// Gets parts of a file given the start and end positions
-int read_file_partially (int start_pos, int end_pos, char *file_name, char **content) {
+// Gets parts of a file given the start and end positions#include <stdio.h>
+#include <stdlib.h>
 
-    // Open file
-    FILE *file = fopen(file_name, "r");
-    if (file == NULL) {
+int read_file_partially(int start_pos, int end_pos, const char *file_name, char **content) {
+    if (start_pos < 0 || end_pos < start_pos) {
+        fprintf(stderr, "Invalid positions %d, %d\n", start_pos, end_pos);
+        return 1;
+    }
+
+    FILE *file = fopen(file_name, "rb");  // Use binary mode to avoid platform newline translations
+    if (!file) {
         perror("Failed to open file");
         return 1;
     }
 
-    // Ensure the start and end positions are valid
-    if (start_pos < 0 || end_pos < start_pos) {
-        fprintf(stderr, "Invalid positions %d, %d\n", start_pos, end_pos);
-        fclose(file);
-        return 1;
-    }
+    // Calculate bytes to read once, ensure non-negative size
+    size_t bytes_to_read = (size_t)(end_pos - start_pos + 1);
 
-    // Move to the start position
-    fseek(file, start_pos, SEEK_SET);
-
-    // Calculate how many bytes to read
-    int bytes_to_read = end_pos - start_pos + 1;  // +1 to include the end position
-
-    // Allocate buffer to store the content
-    char *buffer = malloc(bytes_to_read + 1);  // +1 for null terminator
-    if (buffer == NULL) {
+    // Allocate buffer before seeking to handle early errors
+    char *buffer = malloc(bytes_to_read + 1);
+    if (!buffer) {
         perror("Memory allocation failed");
         fclose(file);
         return 1;
     }
 
-    // Read the content into the buffer
-    size_t bytes_read = fread(buffer, 1, bytes_to_read, file);
-    if (bytes_read != bytes_to_read) {
-        perror("Error reading the file");
+    // Use fseeko instead of fseek for large files (optional, platform dependent)
+    if (fseek(file, start_pos, SEEK_SET) != 0) {
+        perror("Failed to seek file");
         free(buffer);
         fclose(file);
         return 1;
     }
 
-    // Null-terminate the buffer to make it a string
-    buffer[bytes_read] = '\0';
+    // fread may return less than requested, read in a loop until done
+    size_t total_read = 0;
+    while (total_read < bytes_to_read) {
+        size_t read_now = fread(buffer + total_read, 1, bytes_to_read - total_read, file);
+        if (read_now == 0) {
+            if (feof(file)) break; // EOF reached early
+            perror("Error reading file");
+            free(buffer);
+            fclose(file);
+            return 1;
+        }
+        total_read += read_now;
+    }
 
-    // Output the buffer read
+    // Null terminate the buffer
+    buffer[total_read] = '\0';
+
+    // Optionally shrink buffer if fewer bytes read (could realloc or just keep)
+    // *content = realloc(buffer, total_read + 1); // optional, only if memory is a concern
     *content = buffer;
 
-    // Close file
     fclose(file);
-
     return 0;
-
 }
+
 
 // Calculates the distances between sequences set by the user (returns the probability of a given subsequence being the subseuqence set by the user)
 Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequence, int number_bases_content_sequence){
@@ -427,11 +445,15 @@ int write_to_file(char* results){
             }
         }
         if (calculate_compression == 1) {
-            first_line = concatenate_strings(first_line, "Compression_rate_(Markov_models)", 1);
+            first_line = concatenate_strings(first_line, "Compression_ratio_(Markov_models)", 1);
+        }
+
+        if (calculate_entropy == 1){
+            first_line = concatenate_strings(first_line, "Shannon_entropy", 1);
         }
 
         if (compression_geco == 1) {
-            first_line = concatenate_strings(first_line, "Compression_rate_(GeCo3)", 1);
+            first_line = concatenate_strings(first_line, "Compression_ratio_(GeCo3)", 1);
         }
 
         fprintf(file, "%s\n", first_line);  // Write the first line to the file
@@ -457,7 +479,7 @@ long int get_size_file(char* file_name) {
 
 }
 
-float calculate_compression_rate_geco (char * sequence_read, int id) {
+float calculate_compression_ratio_geco (char * sequence_read, int id) {
     FILE *file_seq;
     char filename_uncompressed[100];
     char filename_compressed[100];
@@ -511,6 +533,150 @@ float calculate_compression_rate_geco (char * sequence_read, int id) {
     return (float) compressed_size / initial_size;
 
 }
+
+double calculate_compression_value(char *filename){
+
+	int32_t ctx = 3;
+	uint32_t alphaDen = 1;
+	int32_t window_size = 2;
+
+	FILE *IN = Fopen(filename, "rb");
+
+	ALPHABET *AL = CreateAlphabet();
+	LoadAlphabet(AL, IN);
+
+	//fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
+
+	CModel *CM = CreateCModel(ctx, alphaDen, AL->cardinality);
+	CBUF   *symBuf = CreateCBuffer(BUFFER_SIZE, BGUARD);
+	PModel *PM = CreatePModel(AL->cardinality);
+
+	int sym;
+	double bits = 0;
+	double ic = 0;
+	uint64_t sequence_size = 0;
+	uint8_t buf[BUFFER_SIZE];
+	size_t bytes_read;
+
+    int nr_pos_smoothed_ic = 15000000;
+
+	// Moving average buffers
+	double *ic_window = malloc(window_size * sizeof(double));
+	size_t ic_index = 0;
+
+	double *smoothed_ic = malloc(nr_pos_smoothed_ic * sizeof(double));  // should be enough
+	size_t smoothed_len = 0;
+
+	while((bytes_read = fread(buf, 1, BUFFER_SIZE, IN)) > 0) 
+	for(size_t i = 0 ; i < bytes_read ; ++i) 
+		{
+		symBuf->buf[symBuf->idx] = sym = AL->revMap[buf[i]];
+		GetPModelIdx(&symBuf->buf[symBuf->idx-1], CM);
+		ComputePModel(CM, PM, CM->pModelIdx, CM->alphaDen);
+		ic = PModelSymbolNats(PM, sym) / M_LN2;
+		bits += ic;
+		UpdateCModelCounter(CM, sym, CM->pModelIdx);
+		UpdateCBuffer(symBuf);
+		++sequence_size;
+
+		// Moving average smoothing
+		ic_window[ic_index % window_size] = ic;
+		ic_index++;
+		size_t count = (ic_index < window_size) ? ic_index : window_size;
+		double sum = 0;
+		for(size_t j = 0 ; j < count ; ++j) 
+		sum += ic_window[j];
+		double avg_ic = sum / count;
+
+
+        // Inside your loop, when you want to add avg_ic:
+        if (smoothed_len >= nr_pos_smoothed_ic) {
+            printf("i WAS NEEDED \n\n");
+            // Double the capacity to reduce number of reallocations
+            size_t new_capacity = nr_pos_smoothed_ic * 2;
+            double *new_ptr = realloc(smoothed_ic, new_capacity * sizeof(double));
+            if (new_ptr == NULL) {
+                perror("realloc failed for smoothed_ic");
+                free(smoothed_ic);
+                // handle error, e.g., return or exit
+            }
+            smoothed_ic = new_ptr;
+            nr_pos_smoothed_ic = new_capacity;
+        }
+		
+        smoothed_ic[smoothed_len++] = avg_ic;
+		}
+
+	RemovePModel(PM);
+	RemoveCBuffer(symBuf);
+
+	//fprintf(stderr, "NC: %lf\n", bits / ((double) sequence_size * log2(AL->cardinality)));
+
+	fclose(IN);
+
+    return bits / ((double) sequence_size * log2(AL->cardinality));
+
+}
+
+double calculate_entropy_value(char * sequence_read, int id) {
+
+    FILE *filename;
+    char name[100];
+
+    // Prepare filenames
+    sprintf(name, "sequence_%d.seq", id);
+
+    // Open file for writing
+    filename = fopen(name, "w");
+    if (!filename) {
+        perror("Failed to open uncompressed file");
+        return -1;
+    }
+
+    // Write content
+    fprintf(filename, "%s\n", sequence_read);
+    fclose(filename);  // Flush and close before checking size
+
+    FILE *file = fopen(name, "r");
+
+    uint64_t freq[BYTE_RANGE] = {0};
+    uint64_t total_bytes = 0;
+    uint8_t  buffer[READ_BUFFER_SIZE];
+
+    size_t bytes_read;
+    while((bytes_read = fread(buffer, 1, READ_BUFFER_SIZE, file)) > 0) 
+    {
+    total_bytes += bytes_read;
+    for(size_t i = 0 ; i < bytes_read ; i++) 
+        freq[buffer[i]]++;
+    }
+
+    fclose(file);
+
+    if(total_bytes == 0) 
+    {
+        fprintf(stderr, "Empty file.\n");
+        exit(1);
+    }
+
+    double entropy = 0.0;
+    for(int i = 0 ; i < BYTE_RANGE ; ++i) 
+    {
+    if(freq[i] == 0) continue;
+    double p = (double)freq[i] / total_bytes;
+    entropy -= p * log2(p);
+    }
+
+    //fprintf(stdout, "Shannon entropy: %.6f bits/byte\n", entropy);
+
+    remove(name);
+
+    return entropy;
+
+
+}
+
+
 
 // Tasks to be done by each thread
 int worker_task(int index_data_sequence){
@@ -582,14 +748,21 @@ int worker_task(int index_data_sequence){
     }
 
     if (calculate_compression == 1) {
-        printf("TODO");
+        double nc_results = calculate_compression_value(path_input_file);
+        results = concatenate_strings(results, float_to_string(nc_results), 1);
+    }
+
+    if (calculate_entropy == 1) {
+        double entropy_val = calculate_entropy_value(read_sequence, index_data_sequence);
+        results = concatenate_strings(results, float_to_string(entropy_val), 1);
     }
     
     if (compression_geco == 1) {
-        float compression_rate_geco = calculate_compression_rate_geco(read_sequence, index_data_sequence);
-        results = concatenate_strings(results, float_to_string(compression_rate_geco), 1);
+        float compression_ratio_geco = calculate_compression_ratio_geco(read_sequence, index_data_sequence);
+        results = concatenate_strings(results, float_to_string(compression_ratio_geco), 1);
 
     }
+
 
     // Write results to file
     pthread_mutex_lock(&output_file_mutex);
