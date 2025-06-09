@@ -7,19 +7,20 @@ Run the whole experiment in a Linux system with:
 <pre>
 git clone https://github.com/mirakaya/GenomeClass
 cd GenomeClass/src/
-gcc -O3 genomeclass.c -pthread
-./GenomeClass -i Samples/genomeclass.fasta
+make clean
+make
+./genomeclass -i Samples/rand_500_sequences.fasta -s -g -c -e
 </pre>
 
 To see the possible execution options type
 <pre>
-./GenomeClass -h
+./genomeclass -h
 </pre>
 
 This will print the following options:
 
 ```
-USAGE: ./GenomeClass -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...
+USAGE: ./genomeclass -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...
 
 Program options -------------------------------------------------- ------------------------
 -h, --help              Prints this message
@@ -28,6 +29,7 @@ Program options -------------------------------------------------- -------------
 -s, --size              Calculates the size and the normalized size of the sequences.
 -g, --gc_content        Calculates the GC content.
 -c, --compression       Calculates the compressibility of the sequences (Markov models).
+-e, --entropy           Calculates the entropy of the seuqences.
 -x, --experiment        Calculates the compressibility of the sequences (GeCo).
 -d, --distance          Set a sequence to calculate the distance.
 -t, --threads           Sets the number of threads.
