@@ -534,85 +534,82 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
 
 }
 
-double calculate_compression_value(char *filename){
+double calculate_compression_value(char * sequence_read, int id) {
 
-	int32_t ctx = 3;
+    FILE *filename;
+    char name[100];
+
+    // Prepare filenames
+    sprintf(name, "sequence_%d.seq", id);
+
+    // Open file for writing
+    filename = fopen(name, "w");
+    if (!filename) {
+        perror("Failed to open uncompressed file");
+        return -1;
+    }
+
+    // Write content
+    fprintf(filename, "%s\n", sequence_read);
+    fclose(filename);  // Flush and close before checking size
+
+    int32_t ctx = 3;
 	uint32_t alphaDen = 1;
 	int32_t window_size = 2;
+    int sym;
+    double bits = 0;
+    double ic = 0;
+    uint64_t sequence_size = 0;
+    uint8_t buf[BUFFER_SIZE];
+    size_t bytes_read;
 
-	FILE *IN = Fopen(filename, "rb");
+	FILE *IN = Fopen(name, "rb");
 
-	ALPHABET *AL = CreateAlphabet();
-	LoadAlphabet(AL, IN);
+    ALPHABET *AL = CreateAlphabet();
+    LoadAlphabet(AL, IN);
 
-	//fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
+    //fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
 
-	CModel *CM = CreateCModel(ctx, alphaDen, AL->cardinality);
-	CBUF   *symBuf = CreateCBuffer(BUFFER_SIZE, BGUARD);
-	PModel *PM = CreatePModel(AL->cardinality);
+    CModel *CM = CreateCModel(ctx, alphaDen, AL->cardinality);
+    CBUF   *symBuf = CreateCBuffer(BUFFER_SIZE, BGUARD);
+    PModel *PM = CreatePModel(AL->cardinality);
 
-	int sym;
-	double bits = 0;
-	double ic = 0;
-	uint64_t sequence_size = 0;
-	uint8_t buf[BUFFER_SIZE];
-	size_t bytes_read;
+    // Moving average buffers
+    double *ic_window = malloc(window_size * sizeof(double));
+    size_t ic_index = 0;
 
-    int nr_pos_smoothed_ic = 15000000;
+    double *smoothed_ic = malloc(500000000 * sizeof(double));  // should be enough
+    size_t smoothed_len = 0;
 
-	// Moving average buffers
-	double *ic_window = malloc(window_size * sizeof(double));
-	size_t ic_index = 0;
+    while((bytes_read = fread(buf, 1, BUFFER_SIZE, IN)) > 0) 
+    for(size_t i = 0 ; i < bytes_read ; ++i) 
+        {
+        symBuf->buf[symBuf->idx] = sym = AL->revMap[buf[i]];
+        GetPModelIdx(&symBuf->buf[symBuf->idx-1], CM);
+        ComputePModel(CM, PM, CM->pModelIdx, CM->alphaDen);
+        ic = PModelSymbolNats(PM, sym) / M_LN2;
+        bits += ic;
+        UpdateCModelCounter(CM, sym, CM->pModelIdx);
+        UpdateCBuffer(symBuf);
+        ++sequence_size;
 
-	double *smoothed_ic = malloc(nr_pos_smoothed_ic * sizeof(double));  // should be enough
-	size_t smoothed_len = 0;
-
-	while((bytes_read = fread(buf, 1, BUFFER_SIZE, IN)) > 0) 
-	for(size_t i = 0 ; i < bytes_read ; ++i) 
-		{
-		symBuf->buf[symBuf->idx] = sym = AL->revMap[buf[i]];
-		GetPModelIdx(&symBuf->buf[symBuf->idx-1], CM);
-		ComputePModel(CM, PM, CM->pModelIdx, CM->alphaDen);
-		ic = PModelSymbolNats(PM, sym) / M_LN2;
-		bits += ic;
-		UpdateCModelCounter(CM, sym, CM->pModelIdx);
-		UpdateCBuffer(symBuf);
-		++sequence_size;
-
-		// Moving average smoothing
-		ic_window[ic_index % window_size] = ic;
-		ic_index++;
-		size_t count = (ic_index < window_size) ? ic_index : window_size;
-		double sum = 0;
-		for(size_t j = 0 ; j < count ; ++j) 
-		sum += ic_window[j];
-		double avg_ic = sum / count;
-
-
-        // Inside your loop, when you want to add avg_ic:
-        if (smoothed_len >= nr_pos_smoothed_ic) {
-            printf("i WAS NEEDED \n\n");
-            // Double the capacity to reduce number of reallocations
-            size_t new_capacity = nr_pos_smoothed_ic * 2;
-            double *new_ptr = realloc(smoothed_ic, new_capacity * sizeof(double));
-            if (new_ptr == NULL) {
-                perror("realloc failed for smoothed_ic");
-                free(smoothed_ic);
-                // handle error, e.g., return or exit
-            }
-            smoothed_ic = new_ptr;
-            nr_pos_smoothed_ic = new_capacity;
-        }
-		
+        // Moving average smoothing
+        ic_window[ic_index % window_size] = ic;
+        ic_index++;
+        size_t count = (ic_index < window_size) ? ic_index : window_size;
+        double sum = 0;
+        for(size_t j = 0 ; j < count ; ++j) 
+        sum += ic_window[j];
+        double avg_ic = sum / count;
         smoothed_ic[smoothed_len++] = avg_ic;
-		}
+        }
 
-	RemovePModel(PM);
-	RemoveCBuffer(symBuf);
+    RemovePModel(PM);
+    RemoveCBuffer(symBuf);
 
-	//fprintf(stderr, "NC: %lf\n", bits / ((double) sequence_size * log2(AL->cardinality)));
+    //fprintf(stderr, "NC: %lf\n", bits / ((double) sequence_size * log2(AL->cardinality)));
 
-	fclose(IN);
+    fclose(IN);
 
     return bits / ((double) sequence_size * log2(AL->cardinality));
 
@@ -748,7 +745,7 @@ int worker_task(int index_data_sequence){
     }
 
     if (calculate_compression == 1) {
-        double nc_results = calculate_compression_value(path_input_file);
+        double nc_results = calculate_compression_value(read_sequence, index_data_sequence);
         results = concatenate_strings(results, float_to_string(nc_results), 1);
     }
 
