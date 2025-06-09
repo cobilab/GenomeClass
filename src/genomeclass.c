@@ -41,6 +41,8 @@ pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+FILE *file;
+
 int option_index = 0;
 
 static struct option long_options[] = {
@@ -171,7 +173,6 @@ int initial_reading() {
 
     printf("\nStarting the analysis of the input file.\n");
 
-    FILE *file;
     int ch;
 
     int index_file = 0;
@@ -183,13 +184,6 @@ int initial_reading() {
     int number_bases_seq = 0;
 
     int number_cg = 0;
-
-    // Open input file
-    file = fopen(path_input_file, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return 1;
-    }
 
     // Read each character until the end of file (EOF)
     while ((ch = fgetc(file)) != EOF) {
@@ -273,8 +267,6 @@ int initial_reading() {
 
     printf("Max number bases %d\n\n", max_number_bases);
 
-    fclose(file);  // Close the file
-
     number_sequences = index_data_sequences + 1;
     printf("Number of sequences in the file - %d\n", number_sequences);   
     
@@ -285,15 +277,9 @@ int initial_reading() {
 // Gets parts of a file given the start and end positions#include <stdio.h>
 #include <stdlib.h>
 
-int read_file_partially(int start_pos, int end_pos, const char *file_name, char **content) {
+int read_file_partially(int start_pos, int end_pos, char **content) {
     if (start_pos < 0 || end_pos < start_pos) {
         fprintf(stderr, "Invalid positions %d, %d\n", start_pos, end_pos);
-        return 1;
-    }
-
-    FILE *file = fopen(file_name, "rb");  // Use binary mode to avoid platform newline translations
-    if (!file) {
-        perror("Failed to open file");
         return 1;
     }
 
@@ -304,7 +290,6 @@ int read_file_partially(int start_pos, int end_pos, const char *file_name, char 
     char *buffer = malloc(bytes_to_read + 1);
     if (!buffer) {
         perror("Memory allocation failed");
-        fclose(file);
         return 1;
     }
 
@@ -312,7 +297,6 @@ int read_file_partially(int start_pos, int end_pos, const char *file_name, char 
     if (fseek(file, start_pos, SEEK_SET) != 0) {
         perror("Failed to seek file");
         free(buffer);
-        fclose(file);
         return 1;
     }
 
@@ -324,7 +308,6 @@ int read_file_partially(int start_pos, int end_pos, const char *file_name, char 
             if (feof(file)) break; // EOF reached early
             perror("Error reading file");
             free(buffer);
-            fclose(file);
             return 1;
         }
         total_read += read_now;
@@ -337,7 +320,6 @@ int read_file_partially(int start_pos, int end_pos, const char *file_name, char 
     // *content = realloc(buffer, total_read + 1); // optional, only if memory is a concern
     *content = buffer;
 
-    fclose(file);
     return 0;
 }
 
@@ -407,19 +389,19 @@ Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequen
 // Write the results to the output file (.tsv format)
 int write_to_file(char* results){
 
-    FILE *file;
+    FILE *file_output;
     char column_name[150]; 
 
     if (access(output_path, F_OK) == 0) { // If the output file exists, append the results
-        file = fopen(output_path, "a");
-        if (!file) {
-            perror("Failed to open file");
+        file_output = fopen(output_path, "a");
+        if (!file_output) {
+            perror("Failed to open the output file\n");
             return 1;
         }
     } else { // else, create the file and write the header
-        file = fopen(output_path, "w"); 
-        if (!file) {
-            perror("Failed to open file");
+        file_output = fopen(output_path, "w"); 
+        if (!file_output) {
+            perror("Failed to open file\n");
             return 1;
         }
 
@@ -456,20 +438,20 @@ int write_to_file(char* results){
             first_line = concatenate_strings(first_line, "Compression_ratio_(GeCo3)", 1);
         }
 
-        fprintf(file, "%s\n", first_line);  // Write the first line to the file
+        fprintf(file_output, "%s\n", first_line);  // Write the first line to the file
            
     }
 
-    fprintf(file, "%s\n", results);  // Write the results to the file
-    fclose(file); // Close the file
+    fprintf(file_output, "%s\n", results);  // Write the results to the file
+    fclose(file_output); // Close the file
 
     return 0;
 
 }
 
+// Open file and get size
 long int get_size_file(char* file_name) {
 
-    // Open compressed file and get size
     FILE *fp = fopen(file_name, "rb"); // open in binary mode
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
@@ -479,8 +461,26 @@ long int get_size_file(char* file_name) {
 
 }
 
+// Create a file with a single sequence
+void create_file_single_sequence(char * filename, char * sequence_to_write){
+
+	if (access(filename, F_OK) != 0) { // If the file does not exist, create it
+		// Open file for writing
+		FILE * file_seq;
+		file_seq = fopen(filename, "w");
+		if (!file_seq) {
+			perror("Failed to open uncompressed file");
+			return -1;
+		}
+
+		// Write content
+		fprintf(file_seq, "%s\n", sequence_to_write);
+		fclose(file_seq);  // Flush and close before checking size
+	}
+}
+
 float calculate_compression_ratio_geco (char * sequence_read, int id) {
-    FILE *file_seq;
+
     char filename_uncompressed[100];
     char filename_compressed[100];
     char logs_file[100];
@@ -491,17 +491,8 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
     sprintf(filename_compressed, "sequence_%d.seq.co", id);
     sprintf(logs_file, "logs_%d.txt", id);
 
-    // Open file for writing
-    file_seq = fopen(filename_uncompressed, "w");
-    if (!file_seq) {
-        perror("Failed to open uncompressed file");
-        return -1;
-    }
-
-    // Write content
-    fprintf(file_seq, "%s\n", sequence_read);
-    fclose(file_seq);  // Flush and close before checking size
-
+	// Create the uncompressed file
+	create_file_single_sequence(filename_uncompressed, sequence_read);
 
     // Get size of uncompressed file
     long int initial_size = get_size_file(filename_uncompressed);
@@ -523,36 +514,17 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
 
     // Clean up files
     remove(filename_compressed);
-    remove(filename_uncompressed);
     remove(logs_file);
 
     // Return compression ratio
 
-    //printf("%ld  %ld\n\n", compressed_size, initial_size);
-    //printf("Results geco3 - %ld  %ld   %f\n\n", compressed_size, initial_size, (float) compressed_size / initial_size);
     return (float) compressed_size / initial_size;
 
 }
 
 double calculate_compression_value(char * sequence_read, int id) {
 
-    FILE *filename;
     char name[100];
-
-    // Prepare filenames
-    sprintf(name, "sequence_%d.seq", id);
-
-    // Open file for writing
-    filename = fopen(name, "w");
-    if (!filename) {
-        perror("Failed to open uncompressed file");
-        return -1;
-    }
-
-    // Write content
-    fprintf(filename, "%s\n", sequence_read);
-    fclose(filename);  // Flush and close before checking size
-
     int32_t ctx = 3;
 	uint32_t alphaDen = 1;
 	int32_t window_size = 2;
@@ -562,6 +534,11 @@ double calculate_compression_value(char * sequence_read, int id) {
     uint64_t sequence_size = 0;
     uint8_t buf[BUFFER_SIZE];
     size_t bytes_read;
+
+	// Prepare filenames
+    sprintf(name, "sequence_%d.seq", id);
+
+	create_file_single_sequence(name, sequence_read);
 
 	FILE *IN = Fopen(name, "rb");
 
@@ -617,38 +594,28 @@ double calculate_compression_value(char * sequence_read, int id) {
 
 double calculate_entropy_value(char * sequence_read, int id) {
 
-    FILE *filename;
     char name[100];
 
     // Prepare filenames
     sprintf(name, "sequence_%d.seq", id);
 
-    // Open file for writing
-    filename = fopen(name, "w");
-    if (!filename) {
-        perror("Failed to open uncompressed file");
-        return -1;
-    }
+    create_file_single_sequence(name, sequence_read);
 
-    // Write content
-    fprintf(filename, "%s\n", sequence_read);
-    fclose(filename);  // Flush and close before checking size
-
-    FILE *file = fopen(name, "r");
+    FILE *IN = fopen(name, "r");
 
     uint64_t freq[BYTE_RANGE] = {0};
     uint64_t total_bytes = 0;
     uint8_t  buffer[READ_BUFFER_SIZE];
 
     size_t bytes_read;
-    while((bytes_read = fread(buffer, 1, READ_BUFFER_SIZE, file)) > 0) 
+    while((bytes_read = fread(buffer, 1, READ_BUFFER_SIZE, IN)) > 0) 
     {
     total_bytes += bytes_read;
     for(size_t i = 0 ; i < bytes_read ; i++) 
         freq[buffer[i]]++;
     }
 
-    fclose(file);
+    fclose(IN);
 
     if(total_bytes == 0) 
     {
@@ -665,8 +632,6 @@ double calculate_entropy_value(char * sequence_read, int id) {
     }
 
     //fprintf(stdout, "Shannon entropy: %.6f bits/byte\n", entropy);
-
-    remove(name);
 
     return entropy;
 
@@ -687,7 +652,7 @@ int worker_task(int index_data_sequence){
 
     // Get sequence header
     pthread_mutex_lock(&input_file_mutex);
-    read_file_partially(start_pos_header, end_pos_header, path_input_file, &content_header);
+    read_file_partially(start_pos_header, end_pos_header, &content_header);
     char* aux_header = content_header;
     pthread_mutex_unlock(&input_file_mutex);
 
@@ -700,7 +665,7 @@ int worker_task(int index_data_sequence){
 
     // Get sequence
     pthread_mutex_lock(&input_file_mutex);
-    read_file_partially(start_pos_sequence, end_pos_sequence, path_input_file, &content_sequence);
+    read_file_partially(start_pos_sequence, end_pos_sequence, &content_sequence);
     char* aux_sequence = content_sequence;
     pthread_mutex_unlock(&input_file_mutex);
 
@@ -760,6 +725,13 @@ int worker_task(int index_data_sequence){
 
     }
 
+	char filename_to_delete[100];
+
+    // Prepare filename
+    sprintf(filename_to_delete, "sequence_%d.seq", index_data_sequence);
+	if (access(filename_to_delete, F_OK) == 0) {
+		remove(filename_to_delete);
+	}
 
     // Write results to file
     pthread_mutex_lock(&output_file_mutex);
@@ -827,19 +799,18 @@ int main(int argc, char *argv[]) {
         exit(1);  // Exit with error status
     }
 
+	// Open input file
+    file = fopen(path_input_file, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        return 1;
+    }
+
     // Read the input file and get relevant info on the sequences
     initial_reading();
 
-    // This may not be necessary
-    /*if (number_of_threads > number_sequences){
-        number_of_threads = number_sequences;
-        printf("Number of threads was set to %d due to there only being %d sequences in the input file.\n", number_of_threads, number_sequences);
-    }*/
-
     pthread_t threads[number_of_threads];  // Array to hold thread IDs
-    int thread_ids[number_of_threads];     // Array to hold thread arguments
-
-    
+    int thread_ids[number_of_threads];     // Array to hold thread arguments    
     
     // Initialize threads
     for (int i = 0; i < number_of_threads; i++) {
@@ -856,7 +827,6 @@ int main(int argc, char *argv[]) {
     }
 
     printf("All threads have finished.\n");
-    
-
+	fclose(file);
 
 }
