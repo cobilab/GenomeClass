@@ -252,15 +252,20 @@ if __name__ == '__main__':
 	parser.add_argument("-t", help="Input TSV file", type=str)
 	parser.add_argument("-i", help="Input FASTA file containing the sequences to be classified", nargs="+", type=str, required=False)
 	parser.add_argument("-m", help="Machine learning model to be used. Default: RandomForestClassifier", type=str)
+	parser.add_argument("-o", help="Options for the execution of the C file. Please surround the options with \"\"", type=str)
 
 	args = parser.parse_args()
 
+	if args.o != None:
+		options = args.o
+	else:
+		options = "-s -g -c -e"
+
 	if args.f is not None and os.path.exists(args.f):
-		print("Using " + args.f + "as the input file. Running genomeclass...\n")
+		print("Using " + args.f + " as the input file. Running genomeclass...\n")
 		os.system("make clean")
 		os.system("make")
-		print(args.f)
-		os.system("./genomeclass -i " + args.f + " -s -g -c -e")
+		os.system("./genomeclass -i " + args.f + " " + options)
 		dataset_name = "output.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
