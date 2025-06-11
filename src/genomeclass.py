@@ -1,6 +1,10 @@
+import argparse
 import pickle
+import subprocess
 import time
 import os
+import warnings
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -14,14 +18,12 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import LabelEncoder
 
 
-def import_files(filename, name_pickle):  # import the csv file
+def import_files(filename):  # import the csv file
 
 	chunks = pd.read_csv(filename, sep='\t', low_memory=False, chunksize=500000)
 	data = pd.concat(chunks, ignore_index=True)
 
-	print(data)
-
-	#data.to_pickle(name_pickle)
+	#print(data)
 
 	return data
 
@@ -241,36 +243,51 @@ def fit_and_predict(model, name, is_test):
 
 if __name__ == '__main__':
 
+	warnings.filterwarnings("ignore")
+
+	parser = argparse.ArgumentParser(description="Index", usage="Training and testing\n\npython3 genomeclass.py -f <input multi-FASTA file> -i <input (multi-)FASTA file>\n"
+	                                                            "python3 genomeclass.py -t <input TSV file -i <input (multi-)FASTA file>\n")
+
+	parser.add_argument("-f", help="Input multi-FASTA file", type=str)
+	parser.add_argument("-t", help="Input TSV file", type=str)
+	parser.add_argument("-i", help="Input FASTA file containing the sequences to be classified", nargs="+", type=str, required=False)
+	parser.add_argument("-m", help="Machine learning model to be used. Default: RandomForestClassifier", type=str)
+
+	args = parser.parse_args()
+
+	if args.f is not None and os.path.exists(args.f):
+		print("Using " + args.f + "as the input file. Running genomeclass...\n")
+		os.system("make clean")
+		os.system("make")
+		print(args.f)
+		os.system("./genomeclass -i " + args.f + " -s -g -c -e")
+		dataset_name = "output.tsv"
+
+	elif args.t is not None and os.path.exists(args.t):
+		print("Using " + args.t[0] + "as the input file.\n")
+		dataset_name = args.t
+
+	else:
+		print("No input file. Exiting.")
+		exit(1)
+
+	if args.i is not None:
+		print("File to be classified: " + args.i[0] + "\n")
+	else:
+		print("No file to classify. Exiting.")
+		exit(1)
+
 	pd.set_option('display.max_columns', 30)
 
-	filename = "performance_model.tex"
-	file_tsv = "performance_model.tsv"
-	if os.path.exists(filename):
-		os.remove(filename)
+	file_tsv = "performance_genomeclass_testing.tsv"
+
 	if os.path.exists(file_tsv):
 		os.remove(file_tsv)
 
-	f_tsv = open(file_tsv, "w")
-	f_tsv.write("hidden_layer_sizes\tactivation\tsolver\talpha\tlearning_rate\tmse\tr2\tmae\tmape\n")
-	f_tsv.close()
-
-	init_time = time.perf_counter()
-
-	base_dataset_name = "output"
-
-	# if pickle file exists read from there as it is faster
-	if os.path.exists(base_dataset_name + '.pickle'):
-		data = pd.read_pickle(base_dataset_name + '.pickle')
-	else:
-		data = import_files(base_dataset_name + '.tsv', base_dataset_name + '.pickle')
-
-	print("TIME ->", time.perf_counter() - init_time)
-	print(data.shape)
+	data = import_files(dataset_name)
 
 	print(data.dtypes)
 	print(data.shape)
-
-	# correlation(data)
 
 	X, Y = drop_columns(data)
 	X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
@@ -279,12 +296,9 @@ if __name__ == '__main__':
 	# print("Starting MLPRegressor")
 	# model_mlp = cross_validation_MLPRegressor_v2(X_train, y_train, X_test)
 
-	# print("Starting gradientboosting")
-	# cross_validation_GradientBoostingRegression(X_train, y_train, X_test)
-
 	# train and save models
-	mlp_model = RandomForestClassifier(random_state=42)
-	fit_and_predict(mlp_model, "mlp_model", True)
+	rfc_model = RandomForestClassifier(random_state=42)
+	fit_and_predict(rfc_model, "rfc_model", True)
 	#fit_and_predict(mlp_model, "mlp_model", False)
 
 '''	gbr_model = GradientBoostingRegressor(learning_rate=0.3, min_samples_split=4, n_estimators=50, random_state=42)
