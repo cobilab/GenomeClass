@@ -29,7 +29,8 @@ Program options -------------------------------------------------- -------------
 -s, --size              Calculates the size and the normalized size of the sequences.
 -g, --gc_content        Calculates the GC content.
 -c, --compression       Calculates the compressibility of the sequences (Markov models).
--e, --entropy           Calculates the entropy of the seuqences.
+-e, --entropy           Calculates the entropy of the sequences.
+-m, --melting_point     Calcultates the maximum melting temperature.
 -x, --experiment        Calculates the compressibility of the sequences (GeCo).
 -d, --distance          Set a sequence to calculate the distance.
 -t, --threads           Sets the number of threads.
