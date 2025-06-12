@@ -10,6 +10,11 @@ typedef struct {
     int length_sequence;
     int number_bases;
     int cg_content;
+    int number_a;
+    int number_c;
+    int number_g;
+    int number_t;
+    int number_other;
 } Seq_data;
 
 typedef struct {

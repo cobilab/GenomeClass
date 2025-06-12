@@ -29,13 +29,14 @@ int calculate_gc_content = 0;
 Seq_data *data_all_sequences = NULL;
 int number_sequences = 0;
 int number_tasks_assigned = 0;
-int number_pos_data_sequence = 10000;
+int number_pos_data_sequence = 1000000;
 int calculate_compression = 0;
 int compression_geco;
 int max_number_bases = 0;
 int help_menu = 0;
 int verbose = 0;
 int calculate_entropy = 0;
+int calculate_melting = 0;
 
 pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -53,6 +54,7 @@ static struct option long_options[] = {
     {"gc_content", no_argument, 0, 'g'},
     {"normalized_compression", no_argument, 0, 'c'},
     {"entropy", no_argument, 0, 'e'},
+    {"melting", no_argument, 0, 'm'},
     {"experiment", no_argument, 0, 'x'},
     {"distance", required_argument, 0, 'd'},
     {"threads", required_argument, 0, 't'},
@@ -70,9 +72,10 @@ void program_usage(char *prog_path) {
     printf("-s, --size\t\tCalculates the size and the normalized size of the sequences.\n");
     printf("-g, --gc_content\tCalculates the GC content.\n");
     printf("-c, --compression\tCalculates the compressibility of the sequences (Markov models).\n");
-    printf("-e, --entropy\t\tCalculates the entropy of the seuqences.\n");
-    printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo).\n");
-    printf("-d, --distance\t\tSet a sequence to calculate the distance.\n");
+    printf("-e, --entropy\t\tCalculates the entropy of the sequences.\n");
+    printf("-m, --melting\t\tCalcultates the maximum melting temperature.\n");
+    printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo3).\n");
+    printf("-d, --distance\t\tSet a sequence to calculate the distance (several sequences can be set).\n");
     printf("-t, --threads\t\tSets the number of threads.\n");
     printf("-v, --verbose\t\tVerbose mode - disables progress bar and prints the results.\n");
 
@@ -92,7 +95,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt_long(argc, argv, "hi:o:sgcexd:t:v", long_options, &option_index))  != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:o:sgcemxd:t:v", long_options, &option_index))  != -1) {
         
         switch (opt) {
             case 'h': 
@@ -119,6 +122,9 @@ int option_parsing(int argc, char *argv[]) {
                 break;
             case 'e':
                 calculate_entropy = 1;
+                break;
+            case 'm':
+                calculate_melting = 1;
                 break;
             case 'x':
                 compression_geco = 1;
@@ -190,6 +196,7 @@ int initial_reading() {
 
         if ((char)ch == '>') { // If the character is '>', then it is the begining of a new sequence
 
+
             if (index_data_sequences == -1) { // If it is the first sequence in a file, set index, else write the last position of the previous sequence
 
                 index_data_sequences = 0;
@@ -207,6 +214,14 @@ int initial_reading() {
 
                 index_data_sequences ++;
                 length_seq = 0;
+
+                // Reset count of the characters in the sequence
+                data_all_sequences[index_data_sequences].number_a = 0;
+                data_all_sequences[index_data_sequences].number_c = 0;
+                data_all_sequences[index_data_sequences].number_t = 0;
+                data_all_sequences[index_data_sequences].number_g = 0;
+                data_all_sequences[index_data_sequences].number_other = 0;
+                
                 
             }
 
@@ -246,6 +261,24 @@ int initial_reading() {
                 if ((char)ch == 'c' || (char)ch == 'C' || (char)ch == 'g' || (char)ch == 'G' ) {
                     number_cg ++;
                 }
+
+                if ((char)ch == 'a' || (char)ch == 'A'){
+                    data_all_sequences[index_data_sequences].number_a ++;
+
+                } else if ((char)ch == 'c' || (char)ch == 'C'){
+                    data_all_sequences[index_data_sequences].number_c ++;
+
+                } else if ((char)ch == 't' || (char)ch == 'T'){
+                    data_all_sequences[index_data_sequences].number_t ++;
+
+                } else if ((char)ch == 'g' || (char)ch == 'G'){
+                    data_all_sequences[index_data_sequences].number_g ++;
+
+                } else {
+                    data_all_sequences[index_data_sequences].number_other ++;
+                }
+
+
             }
 
             length_seq ++;
@@ -434,6 +467,11 @@ int write_to_file(char* results){
             first_line = concatenate_strings(first_line, "Shannon_entropy", 1);
         }
 
+        if (calculate_melting == 1){
+            first_line = concatenate_strings(first_line, "Maximum melting temperature", 1);
+        }
+
+
         if (compression_geco == 1) {
             first_line = concatenate_strings(first_line, "Compression_ratio_(GeCo3)", 1);
         }
@@ -551,13 +589,6 @@ double calculate_compression_value(char * sequence_read, int id) {
     CBUF   *symBuf = CreateCBuffer(BUFFER_SIZE, BGUARD);
     PModel *PM = CreatePModel(AL->cardinality);
 
-    // Moving average buffers
-    double *ic_window = malloc(window_size * sizeof(double));
-    size_t ic_index = 0;
-
-    double *smoothed_ic = malloc(500000000 * sizeof(double));  // should be enough
-    size_t smoothed_len = 0;
-
     while((bytes_read = fread(buf, 1, BUFFER_SIZE, IN)) > 0) 
     for(size_t i = 0 ; i < bytes_read ; ++i) 
         {
@@ -569,16 +600,6 @@ double calculate_compression_value(char * sequence_read, int id) {
         UpdateCModelCounter(CM, sym, CM->pModelIdx);
         UpdateCBuffer(symBuf);
         ++sequence_size;
-
-        // Moving average smoothing
-        ic_window[ic_index % window_size] = ic;
-        ic_index++;
-        size_t count = (ic_index < window_size) ? ic_index : window_size;
-        double sum = 0;
-        for(size_t j = 0 ; j < count ; ++j) 
-        sum += ic_window[j];
-        double avg_ic = sum / count;
-        smoothed_ic[smoothed_len++] = avg_ic;
         }
 
     RemovePModel(PM);
@@ -636,6 +657,20 @@ double calculate_entropy_value(char * sequence_read, int id) {
     return entropy;
 
 
+}
+
+double calculate_melting_temperature (int number_A, int number_T, int number_C, int number_G) {
+
+    uint32_t len = number_A + number_T + number_G + number_C;
+
+    if(len == 0) return 0.0; // Avoid divide by zero
+
+    if(len < 14) {
+        return (number_A + number_T) * 2 + (number_G + number_C) * 4;
+    } else {
+        return 64.9 + 41.0 * (number_G + number_C - 16.4) / len;
+    } 
+    
 }
 
 
@@ -717,6 +752,11 @@ int worker_task(int index_data_sequence){
     if (calculate_entropy == 1) {
         double entropy_val = calculate_entropy_value(read_sequence, index_data_sequence);
         results = concatenate_strings(results, float_to_string(entropy_val), 1);
+    }
+
+    if (calculate_melting == 1) {
+        double melting_temp = calculate_melting_temperature(data_all_sequences[index_data_sequence].number_a, data_all_sequences[index_data_sequence].number_t, data_all_sequences[index_data_sequence].number_c, data_all_sequences[index_data_sequence].number_g);
+        results = concatenate_strings(results, float_to_string(melting_temp), 1);
     }
     
     if (compression_geco == 1) {
