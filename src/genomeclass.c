@@ -73,7 +73,7 @@ void program_usage(char *prog_path) {
     printf("-g, --gc_content\tCalculates the GC content.\n");
     printf("-c, --compression\tCalculates the compressibility of the sequences (Markov models).\n");
     printf("-e, --entropy\t\tCalculates the entropy of the sequences.\n");
-    printf("-m, --melting\t\tCalcultates the maximum melting temperature.\n");
+    printf("-m, --melting\t\tCalculates the maximum melting temperature.\n");
     printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo3).\n");
     printf("-d, --distance\t\tSet a sequence to calculate the distance (several sequences can be set).\n");
     printf("-t, --threads\t\tSets the number of threads.\n");
@@ -468,7 +468,7 @@ int write_to_file(char* results){
         }
 
         if (calculate_melting == 1){
-            first_line = concatenate_strings(first_line, "Maximum melting temperature", 1);
+            first_line = concatenate_strings(first_line, "Maximum_melting_temperature", 1);
         }
 
 

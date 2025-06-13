@@ -8,14 +8,21 @@ import warnings
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestClassifier
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, \
-	mean_absolute_percentage_error, accuracy_score
+import numpy as np
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, average_precision_score
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
-from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, label_binarize
+from xgboost import XGBClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+from collections import Counter
+
 
 
 def import_files(filename):  # import the csv file
@@ -68,6 +75,8 @@ def drop_columns(data):
 	le = LabelEncoder()
 	X = data.drop(columns=['Sequence_id'])
 	y = le.fit_transform(data['Sequence_id'])
+
+	print(f"Class 8 label: {le.inverse_transform([8])[0]}")
 
 	return X, y
 
@@ -211,25 +220,56 @@ def generate_plots(data):
 
 def fit_and_predict(model, name, is_test):
 	if is_test == True:
-		print("Testing the " + name + "...")
+		# Print model name
+		print("\n\nTesting the " + name + "...")
 
-		print(data.columns)
+		# Optional: Check input columns
+		#print(data.columns)
 
+		# Train the model
 		model.fit(X_train, y_train)
 
+		# Make predictions
 		y_pred = model.predict(X_test)
+		y_scores = model.predict_proba(X_test)  # shape: (n_samples, n_classes)
 
-		# Evaluate the model's performance
-		mse = mean_squared_error(y_test, y_pred)
-		r2 = r2_score(y_test, y_pred)
-		mae = mean_absolute_error(y_test, y_pred)
-		mape = mean_absolute_percentage_error(y_test, y_pred)
-		accuracy = accuracy_score(y_test, y_pred)
-		print(f"Mean squared error: {mse:.4f}")
-		print(f"Mean absolute error: {mae:.4f}")
-		print(f"R-squared: {r2:.4f}")
-		print(f"Mean absolute percentage error: {mape:.4f}")
-		print(f"Accuracy: {accuracy:.4f}")
+		# Binarize true labels using only the model's classes
+		y_test_bin = label_binarize(y_test, classes=model.classes_)
+
+		# === Evaluate the model ===
+
+		'''print("Unique classes in y_test:", set(y_test))
+		print("y_scores shape:", y_scores.shape)
+		print("y_test_bin shape:", y_test_bin.shape)
+		print("Sample y_scores:", y_scores[:5])
+		print("Variance of y_scores:", np.var(y_scores, axis=0))'''
+
+		# Accuracy
+		acc = accuracy_score(y_test, y_pred)
+
+		# F1 Score (macro averages across classes)
+		f1 = f1_score(y_test, y_pred, average='macro')
+
+		# AUROC (macro-averaged across classes)
+		auroc = roc_auc_score(y_test_bin, y_scores, multi_class='ovr', average='macro')
+
+		# AUPRC (macro-averaged across classes)
+		auprc = average_precision_score(y_test_bin, y_scores, average='macro')
+
+		print("Class distribution in y_test:")
+		print(Counter(y_test))
+
+		cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
+		disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
+		disp.plot(xticks_rotation=45)
+		plt.title("Confusion Matrix")
+		plt.show()
+
+		# Print results
+		print(f"Accuracy: {acc:.4f}")
+		print(f"F1 Score: {f1:.4f}")
+		print(f"AUROC: {auroc:.4f}")
+		print(f"AUPRC: {auprc:.4f}")
 
 	else:
 		print("Saving the " + name + "...")
@@ -259,13 +299,13 @@ if __name__ == '__main__':
 	if args.o != None:
 		options = args.o
 	else:
-		options = "-s -g -c -e"
+		options = "-s -g -c -e -m"
 
 	if args.f is not None and os.path.exists(args.f):
 		print("Using " + args.f + " as the input file. Running genomeclass...\n")
-		os.system("make clean")
-		os.system("make")
-		os.system("./genomeclass -i " + args.f + " " + options)
+		#os.system("make clean")
+		#os.system("make")
+		#os.system("./genomeclass -i " + args.f + " " + options)
 		dataset_name = "output.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
@@ -302,8 +342,24 @@ if __name__ == '__main__':
 	# model_mlp = cross_validation_MLPRegressor_v2(X_train, y_train, X_test)
 
 	# train and save models
-	rfc_model = RandomForestClassifier(random_state=42)
-	fit_and_predict(rfc_model, "rfc_model", True)
+	xgboost = XGBClassifier(random_state=42)
+	fit_and_predict(xgboost, "XGBClassifier", True)
+
+	gnb = GaussianNB()
+	fit_and_predict(gnb, "GaussianNB", True)
+
+	svc = SVC(probability=True, random_state=42)
+	fit_and_predict(svc, "SVC", True)
+
+	knn = KNeighborsClassifier()
+	fit_and_predict(knn, "KNeighborsClassifier", True)
+
+	rfc = RandomForestClassifier(random_state=42)
+	fit_and_predict(rfc, "RandomForestClassifier", True)
+
+	mlp = MLPClassifier(random_state=42)
+	fit_and_predict(mlp, "MLPClassifier", True)
+
 	#fit_and_predict(mlp_model, "mlp_model", False)
 
 '''	gbr_model = GradientBoostingRegressor(learning_rate=0.3, min_samples_split=4, n_estimators=50, random_state=42)

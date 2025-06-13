@@ -30,7 +30,7 @@ Program options -------------------------------------------------- -------------
 -g, --gc_content        Calculates the GC content.
 -c, --compression       Calculates the compressibility of the sequences (Markov models).
 -e, --entropy           Calculates the entropy of the sequences.
--m, --melting           Calcultates the maximum melting temperature.
+-m, --melting           Calculates the maximum melting temperature.
 -x, --experiment        Calculates the compressibility of the sequences (GeCo3).
 -d, --distance          Set a sequence to calculate the distance (several sequences can be set).
 -t, --threads           Sets the number of threads.
