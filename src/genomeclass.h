@@ -1,20 +1,20 @@
 
 #include <sys/ioctl.h>
 #include <unistd.h>
-// Structure for storing the begining and end of a sequence
+// Structure for storing the beginning and end of a sequence
 
 typedef struct {
-    int init_header;
-    int end_header;
-    int end_sequence;
-    int length_sequence;
-    int number_bases;
-    int cg_content;
-    int number_a;
-    int number_c;
-    int number_g;
-    int number_t;
-    int number_other;
+    unsigned long long int init_header;
+    unsigned long long int end_header;
+    unsigned long long int end_sequence;
+    unsigned long long int length_sequence;
+    unsigned long long int number_bases;
+    unsigned long long int cg_content;
+    unsigned long long int number_a;
+    unsigned long long int number_c;
+    unsigned long long int number_g;
+    unsigned long long int number_t;
+    unsigned long long int number_other;
 } Seq_data;
 
 typedef struct {

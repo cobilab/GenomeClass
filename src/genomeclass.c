@@ -29,7 +29,7 @@ int calculate_gc_content = 0;
 Seq_data *data_all_sequences = NULL;
 int number_sequences = 0;
 int number_tasks_assigned = 0;
-int number_pos_data_sequence = 1000000;
+long long int number_pos_data_sequence = 100000000;
 int calculate_compression = 0;
 int compression_geco;
 int max_number_bases = 0;
@@ -181,15 +181,15 @@ int initial_reading() {
 
     int ch;
 
-    int index_file = 0;
-    int index_data_sequences = -1;
+    unsigned long long int index_file = 0;
+    unsigned long long int index_data_sequences = -1;
 
     int is_header = 0;
 
-    int length_seq = 0;
-    int number_bases_seq = 0;
+    unsigned long long int length_seq = 0;
+    unsigned long long int number_bases_seq = 0;
 
-    int number_cg = 0;
+    unsigned long long int number_cg = 0;
 
     // Read each character until the end of file (EOF)
     while ((ch = fgetc(file)) != EOF) {
@@ -310,7 +310,7 @@ int initial_reading() {
 // Gets parts of a file given the start and end positions#include <stdio.h>
 #include <stdlib.h>
 
-int read_file_partially(int start_pos, int end_pos, char **content) {
+int read_file_partially(unsigned long long int start_pos, unsigned long long int end_pos, char **content) {
     if (start_pos < 0 || end_pos < start_pos) {
         fprintf(stderr, "Invalid positions %d, %d\n", start_pos, end_pos);
         return 1;
@@ -488,7 +488,7 @@ int write_to_file(char* results){
 }
 
 // Open file and get size
-long int get_size_file(char* file_name) {
+long long int get_size_file(char* file_name) {
 
     FILE *fp = fopen(file_name, "rb"); // open in binary mode
     fseek(fp, 0, SEEK_END);
@@ -533,7 +533,7 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
 	create_file_single_sequence(filename_uncompressed, sequence_read);
 
     // Get size of uncompressed file
-    long int initial_size = get_size_file(filename_uncompressed);
+    long long int initial_size = get_size_file(filename_uncompressed);
 
     // Build GeCo3 command
     snprintf(command_geco, sizeof(command_geco),
@@ -548,7 +548,7 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
     }
 
     // Get size of uncompressed file
-    long int compressed_size = get_size_file(filename_compressed);
+    long long int compressed_size = get_size_file(filename_compressed);
 
     // Clean up files
     remove(filename_compressed);
@@ -682,8 +682,8 @@ int worker_task(int index_data_sequence){
     char *content_sequence;
 
     //Initial and end position of the header
-    int start_pos_header = data_all_sequences[index_data_sequence].init_header;
-    int end_pos_header = data_all_sequences[index_data_sequence].end_header;
+    unsigned long long int start_pos_header = data_all_sequences[index_data_sequence].init_header;
+    unsigned long long int end_pos_header = data_all_sequences[index_data_sequence].end_header;
 
     // Get sequence header
     pthread_mutex_lock(&input_file_mutex);
@@ -695,8 +695,8 @@ int worker_task(int index_data_sequence){
     char *read_header = remove_newline_and_tab_characters(aux_header);
 
     //Initial and end position of the sequence   
-    int start_pos_sequence = end_pos_header + 1;  // Start position in the file
-    int end_pos_sequence = data_all_sequences[index_data_sequence].end_sequence;   // End position in the file
+    unsigned long long int start_pos_sequence = end_pos_header + 1;  // Start position in the file
+    unsigned long long int end_pos_sequence = data_all_sequences[index_data_sequence].end_sequence;   // End position in the file
 
     // Get sequence
     pthread_mutex_lock(&input_file_mutex);
