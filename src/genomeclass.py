@@ -1,9 +1,14 @@
 import argparse
+import itertools
 import pickle
 import subprocess
 import time
 import os
 import warnings
+from operator import index
+
+from nltk.stem import PorterStemmer
+import string
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -23,12 +28,67 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 from collections import Counter
 
+def change_sequence_id_column(df, num_split):
+
+	df['Sequence_id'] = df['Sequence_id'].str.lower()
+
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split(',')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: ' '.join(x.split(' ')[1:]) if isinstance(x, str) else x)
+
+	df = df[~df.iloc[:, 0].astype(str).str.startswith('unverified:')]
+	df = df[~df.iloc[:, 0].astype(str).str.startswith('unverified_org:')]
+	df = df[~df.iloc[:, 0].astype(str).str.startswith('tpa_asm:')]
+	df = df[~df.iloc[:, 0].astype(str).str.startswith('mag:')]
+	
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('strain')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('contig')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('phage')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('isolate')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('clone')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('segment')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('gene')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('(')[0] if isinstance(x, str) else x)
+	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('genome')[0] if isinstance(x, str) else x)
+
+	df['Sequence_id'] = df['Sequence_id'].str.replace('genome assembly', '', regex=False)
+	df['Sequence_id'] = df['Sequence_id'].str.replace('genome sequence', '', regex=False)
+	df['Sequence_id'] = df['Sequence_id'].str.replace('genomic sequence', '', regex=False)
+	df['Sequence_id'] = df['Sequence_id'].str.replace('complete', '', regex=False)
+	df['Sequence_id'] = df['Sequence_id'].str.replace('genomic', '', regex=False)
+
+	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if len(w) > 3]) if isinstance(x, str) else x)
+	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if '/' not in w]) if isinstance(x, str) else x)
+	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if '[' not in w]) if isinstance(x, str) else x)
+	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if 'kb' not in w]) if isinstance(x, str) else x)
+
+	
+	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if not w.startswith('-')]) if isinstance(x, str) else x)	
+
+	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if not w.endswith(']')]) if isinstance(x, str) else x)	
+	
+	
+	#stemmer = PorterStemmer()
+	#df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([stemmer.stem(word) for word in str(x).split()]))
+	
+	return df
+
+
 
 
 def import_files(filename):  # import the csv file
 
 	chunks = pd.read_csv(filename, sep='\t', low_memory=False, chunksize=500000)
 	data = pd.concat(chunks, ignore_index=True)
+
+	#data = change_sequence_id_column(data, 3)
+
+	data['Sequence_id'] = data['Sequence_id'].str.replace('>', '', regex=False)
+
+	if args.s != None:
+
+		data['Sequence_id'] = data['Sequence_id'].str.split('|').str[args.s]
+
+
 
 	#print(data)
 
@@ -75,8 +135,6 @@ def drop_columns(data):
 	le = LabelEncoder()
 	X = data.drop(columns=['Sequence_id'])
 	y = le.fit_transform(data['Sequence_id'])
-
-	print(f"Class 8 label: {le.inverse_transform([8])[0]}")
 
 	return X, y
 
@@ -256,14 +314,14 @@ def fit_and_predict(model, name, is_test):
 		# AUPRC (macro-averaged across classes)
 		auprc = average_precision_score(y_test_bin, y_scores, average='macro')
 
-		print("Class distribution in y_test:")
-		print(Counter(y_test))
+		#print("Class distribution in y_test:")
+		#print(Counter(y_test))
 
-		cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
-		disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
-		disp.plot(xticks_rotation=45)
-		plt.title("Confusion Matrix")
-		plt.show()
+		#cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
+		#disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
+		#disp.plot(xticks_rotation=45)
+		#plt.title("Confusion Matrix")
+		#plt.show()
 
 		# Print results
 		print(f"Accuracy: {acc:.4f}")
@@ -281,32 +339,85 @@ def fit_and_predict(model, name, is_test):
 		pickle.dump(model, open(filename, 'wb'))
 
 
+def balance_data(df):
+
+	target = 'Sequence_id'
+	# Count instances per label
+	counts = df[target].value_counts()
+
+	# Calculate average and median
+	average_count = counts.mean()
+
+	print(average_count)
+	median_count = counts.median()
+
+
+	if average_count < median_count:
+
+		average_count = median_count
+
+	factor = 3 * average_count
+
+	for value in df[target].unique():
+
+		if (df[target] == value).sum() > factor:
+
+			instances_to_remove = (df[target] == value).sum() - factor
+			indices_to_remove = df[df[target] == value].sample(n=int(instances_to_remove), random_state=42).index
+
+			# Drop those rows
+			df = df.drop(index=indices_to_remove)
+			print(df.shape)
+
+		elif (df[target] == value).sum() < 0.01 * average_count:
+
+			indices_to_drop = df[df[target] == value].index
+			df = df.drop(index=indices_to_drop)
+			print(df.shape)
+	return df
+
+
+
 if __name__ == '__main__':
 
 	warnings.filterwarnings("ignore")
 
 	parser = argparse.ArgumentParser(description="Index", usage="Training and testing\n\npython3 genomeclass.py -f <input multi-FASTA file> -i <input (multi-)FASTA file>\n"
-	                                                            "python3 genomeclass.py -t <input TSV file -i <input (multi-)FASTA file>\n")
+	                                                            "python3 genomeclass.py -t <input TSV file> -i <input (multi-)FASTA file>\n")
 
 	parser.add_argument("-f", help="Input multi-FASTA file", type=str)
 	parser.add_argument("-t", help="Input TSV file", type=str)
 	parser.add_argument("-i", help="Input FASTA file containing the sequences to be classified", nargs="+", type=str, required=False)
+	parser.add_argument("-s", help="Part of the Sequence_id that will become the target feature", type=int)
 	parser.add_argument("-m", help="Machine learning model to be used. Default: RandomForestClassifier", type=str)
 	parser.add_argument("-o", help="Options for the execution of the C file. Please surround the options with \"\"", type=str)
-
+	parser.add_argument("-p", help="Add permutations of a certain number of characters", action='append', type=int, required=False)
+	parser.add_argument("-a", help="Uses an auto balancer on the dataset", action='store_true', required=False)
 	args = parser.parse_args()
 
+	permutations_added = ""
+	if args.p != None:
+		chars = ['A', 'C', 'T', 'G']
+
+		for i in args.p:
+
+			permutations = [''.join(p) for p in itertools.product(chars, repeat=i)]
+			for j in permutations:
+				permutations_added += " -d "
+				permutations_added += j
+
 	if args.o != None:
-		options = args.o
+		options = args.o + permutations_added
 	else:
-		options = "-s -g -c -e -m"
+		options = "-s -g -c -e -m -t 4" + permutations_added
 
 	if args.f is not None and os.path.exists(args.f):
 		print("Using " + args.f + " as the input file. Running genomeclass...\n")
 		#os.system("make clean")
 		#os.system("make")
+		#print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
 		#os.system("./genomeclass -i " + args.f + " " + options)
-		dataset_name = "output.tsv"
+		dataset_name = "output_sequences_ncbi_vssi_query1.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
 		print("Using " + args.t[0] + "as the input file.\n")
@@ -333,7 +444,29 @@ if __name__ == '__main__':
 
 	print(data.dtypes)
 	print(data.shape)
+	print(data.head(10))
 
+	if args.a:
+		data = balance_data(data)
+
+
+	#data['Sequence_id'] = data['Sequence_id'].str.split('(').str[0]
+	#data['Sequence_id'] = data['Sequence_id'].str.split('-RT').str[0]
+	
+	value_counts = data['Sequence_id'].value_counts()
+	
+	for seq_id, count in value_counts.items():
+	    print(f"{seq_id}: {count}")
+
+	print(data['Sequence_id'].value_counts())
+
+	print(f"Number of unique values: {data['Sequence_id'].nunique()}")
+
+
+	
+
+	
+	
 	X, Y = drop_columns(data)
 	X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
@@ -342,14 +475,14 @@ if __name__ == '__main__':
 	# model_mlp = cross_validation_MLPRegressor_v2(X_train, y_train, X_test)
 
 	# train and save models
-	xgboost = XGBClassifier(random_state=42)
-	fit_and_predict(xgboost, "XGBClassifier", True)
+	#xgboost = XGBClassifier(random_state=42)
+	#fit_and_predict(xgboost, "XGBClassifier", True)
 
 	gnb = GaussianNB()
 	fit_and_predict(gnb, "GaussianNB", True)
 
-	svc = SVC(probability=True, random_state=42)
-	fit_and_predict(svc, "SVC", True)
+	#svc = SVC(probability=True, random_state=42)
+	#fit_and_predict(svc, "SVC", True)
 
 	knn = KNeighborsClassifier()
 	fit_and_predict(knn, "KNeighborsClassifier", True)
