@@ -6,6 +6,9 @@ import time
 import os
 import warnings
 from operator import index
+from sklearn.utils.class_weight import compute_sample_weight
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from nltk.stem import PorterStemmer
 import string
@@ -88,9 +91,8 @@ def import_files(filename):  # import the csv file
 
 		data['Sequence_id'] = data['Sequence_id'].str.split('|').str[args.s]
 
-
-
-	#print(data)
+ 	# Remove rows with empty values on the target feature
+	data = data[data['Sequence_id'].notna() & (data['Sequence_id'].str.strip() != '')]
 
 	return data
 
@@ -285,7 +287,11 @@ def fit_and_predict(model, name, is_test):
 		#print(data.columns)
 
 		# Train the model
-		model.fit(X_train, y_train)
+		weights = compute_sample_weight(class_weight='balanced', y=y_train)
+		try:
+			model.fit(X_train, y_train, sample_weight=weights)
+		except:
+			model.fit(X_train, y_train)
 
 		# Make predictions
 		y_pred = model.predict(X_test)
@@ -345,18 +351,7 @@ def balance_data(df):
 	# Count instances per label
 	counts = df[target].value_counts()
 
-	# Calculate average and median
-	average_count = counts.mean()
-
-	print(average_count)
-	median_count = counts.median()
-
-
-	if average_count < median_count:
-
-		average_count = median_count
-
-	factor = 3 * average_count
+	factor = 3 * counts.mean()
 
 	for value in df[target].unique():
 
@@ -367,14 +362,33 @@ def balance_data(df):
 
 			# Drop those rows
 			df = df.drop(index=indices_to_remove)
-			print(df.shape)
 
-		elif (df[target] == value).sum() < 0.01 * average_count:
+		elif (df[target] == value).sum() < 0.02 * factor:
 
-			indices_to_drop = df[df[target] == value].index
-			df = df.drop(index=indices_to_drop)
-			print(df.shape)
+			df = df[df[target] != value]
 	return df
+
+def additional_removals (df):
+
+	df = df[df['Sequence_id'] != "unknown"]
+	df = df[df['Sequence_id'] != "RNA"]
+	df = df[df['Sequence_id'] != "DNA"]
+	df = df[df['Sequence_id'] != "dsDNA; ssDNA"]
+	df = df[df['Sequence_id'] != "ssRNA"]
+
+
+	return df
+
+def remove_highly_correlated_features(df, threshold):
+    corr_matrix = df.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
+    print(f"Removed {len(to_drop)} highly correlated columns: {to_drop}")
+
+    return df.drop(columns=to_drop)
+
+
+
 
 
 
@@ -417,7 +431,7 @@ if __name__ == '__main__':
 		#os.system("make")
 		#print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
 		#os.system("./genomeclass -i " + args.f + " " + options)
-		dataset_name = "output_sequences_ncbi_vssi_query1.tsv"
+		dataset_name = "output.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
 		print("Using " + args.t[0] + "as the input file.\n")
@@ -442,17 +456,14 @@ if __name__ == '__main__':
 
 	data = import_files(dataset_name)
 
-	print(data.dtypes)
+	#print(data.dtypes)
 	print(data.shape)
-	print(data.head(10))
+	#print(data.head(10))
 
 	if args.a:
 		data = balance_data(data)
+	data = additional_removals(data)
 
-
-	#data['Sequence_id'] = data['Sequence_id'].str.split('(').str[0]
-	#data['Sequence_id'] = data['Sequence_id'].str.split('-RT').str[0]
-	
 	value_counts = data['Sequence_id'].value_counts()
 	
 	for seq_id, count in value_counts.items():
@@ -462,21 +473,40 @@ if __name__ == '__main__':
 
 	print(f"Number of unique values: {data['Sequence_id'].nunique()}")
 
+	# Start training process
 
-	
+	data = data.loc[:, ~data.columns.str.startswith('Prob_sequence_')]
+	print(data.shape)
 
-	
-	
-	X, Y = drop_columns(data)
+	# 1. Separate features and target first
+	X, Y = drop_columns(data)  # Your function that splits features and target
+
+	#X = remove_highly_correlated_features(X, 0.8)
+
+	# 3. Train/test split
 	X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-	# get parameters
-	# print("Starting MLPRegressor")
-	# model_mlp = cross_validation_MLPRegressor_v2(X_train, y_train, X_test)
+	# 4. Scale
+	'''scaler = StandardScaler()
+	X_train_scaled = scaler.fit_transform(X_train)
+	X_test_scaled = scaler.transform(X_test)
+
+	# 5. Optional: PCA
+	pca = PCA(n_components=0.95)
+	X_train_pca = pca.fit_transform(X_train_scaled)
+	X_test_pca = pca.transform(X_test_scaled)
+
+	X_train = X_train_pca
+	X_test = X_test_pca
+
+	print(f"Original data shape: {data.shape}")
+	print(f"Shape after drop_columns: {X.shape[1]} features")
+	print(f"Shape after removing correlated features: {X.shape[1]} features")
+	print(f"Shape after PCA: {X_train_pca.shape[1]} components")'''
 
 	# train and save models
-	#xgboost = XGBClassifier(random_state=42)
-	#fit_and_predict(xgboost, "XGBClassifier", True)
+	xgboost = XGBClassifier(random_state=42)
+	fit_and_predict(xgboost, "XGBClassifier", True)
 
 	gnb = GaussianNB()
 	fit_and_predict(gnb, "GaussianNB", True)
