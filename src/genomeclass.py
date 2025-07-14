@@ -26,6 +26,16 @@ from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier, ExtraTreesClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
+from xgboost import XGBClassifier
 
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
@@ -283,9 +293,6 @@ def fit_and_predict(model, name, is_test):
 		# Print model name
 		print("\n\nTesting the " + name + "...")
 
-		# Optional: Check input columns
-		#print(data.columns)
-
 		# Train the model
 		weights = compute_sample_weight(class_weight='balanced', y=y_train)
 		try:
@@ -299,14 +306,6 @@ def fit_and_predict(model, name, is_test):
 
 		# Binarize true labels using only the model's classes
 		y_test_bin = label_binarize(y_test, classes=model.classes_)
-
-		# === Evaluate the model ===
-
-		'''print("Unique classes in y_test:", set(y_test))
-		print("y_scores shape:", y_scores.shape)
-		print("y_test_bin shape:", y_test_bin.shape)
-		print("Sample y_scores:", y_scores[:5])
-		print("Variance of y_scores:", np.var(y_scores, axis=0))'''
 
 		# Accuracy
 		acc = accuracy_score(y_test, y_pred)
@@ -355,7 +354,7 @@ def balance_data(df):
 
 	for value in df[target].unique():
 
-		if (df[target] == value).sum() > factor:
+		if (df[target] == value).sum() > factor :
 
 			instances_to_remove = (df[target] == value).sum() - factor
 			indices_to_remove = df[df[target] == value].sample(n=int(instances_to_remove), random_state=42).index
@@ -363,7 +362,7 @@ def balance_data(df):
 			# Drop those rows
 			df = df.drop(index=indices_to_remove)
 
-		elif (df[target] == value).sum() < 0.02 * factor:
+		elif (df[target] == value).sum() < 0.02 * factor or (df[target] == value).sum() <= 5:
 
 			df = df[df[target] != value]
 	return df
@@ -379,11 +378,38 @@ def additional_removals (df):
 
 	return df
 
+def show_correlation_matrix (X):
+
+	# Compute the correlation matrix
+	corr_matrix = X.corr().abs()
+
+	# Set up the matplotlib figure
+	plt.figure(figsize=(12, 10))
+
+	# Draw the heatmap with the mask and correct aspect ratio
+	sns.heatmap(corr_matrix,
+				cmap='coolwarm',
+				annot=False,
+				fmt=".2f",
+				cbar_kws={"shrink": .5})
+
+	plt.title("Feature Correlation Matrix", fontsize=16)
+	plt.tight_layout()
+	plt.show()
+
 def remove_highly_correlated_features(df, threshold):
     corr_matrix = df.corr().abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
     print(f"Removed {len(to_drop)} highly correlated columns: {to_drop}")
+
+    return df.drop(columns=to_drop)
+
+def remove_lowly_correlated_features(df, threshold):
+    corr_matrix = df.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] < threshold)]
+    print(f"Removed {len(to_drop)} lowly correlated columns: {to_drop}")
 
     return df.drop(columns=to_drop)
 
@@ -427,10 +453,10 @@ if __name__ == '__main__':
 
 	if args.f is not None and os.path.exists(args.f):
 		print("Using " + args.f + " as the input file. Running genomeclass...\n")
-		#os.system("make clean")
-		#os.system("make")
-		#print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
-		#os.system("./genomeclass -i " + args.f + " " + options)
+		os.system("make clean")
+		os.system("make")
+		print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
+		os.system("./genomeclass -i " + args.f + " " + options)
 		dataset_name = "output.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
@@ -472,16 +498,18 @@ if __name__ == '__main__':
 	print(data['Sequence_id'].value_counts())
 
 	print(f"Number of unique values: {data['Sequence_id'].nunique()}")
+	data = data.loc[:, ~data.columns.str.startswith('Prob_sequence_')]
+
 
 	# Start training process
-
-	data = data.loc[:, ~data.columns.str.startswith('Prob_sequence_')]
 	print(data.shape)
+
 
 	# 1. Separate features and target first
 	X, Y = drop_columns(data)  # Your function that splits features and target
-
-	#X = remove_highly_correlated_features(X, 0.8)
+	#show_correlation_matrix(X)
+	#X = remove_highly_correlated_features(X, 0.95)
+	#X = remove_lowly_correlated_features(X, 0.02)
 
 	# 3. Train/test split
 	X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
@@ -508,23 +536,38 @@ if __name__ == '__main__':
 	xgboost = XGBClassifier(random_state=42)
 	fit_and_predict(xgboost, "XGBClassifier", True)
 
-	gnb = GaussianNB()
-	fit_and_predict(gnb, "GaussianNB", True)
+	log_reg = LogisticRegression(random_state=42)
+	fit_and_predict(log_reg, "LogisticRegression", True)
 
-	#svc = SVC(probability=True, random_state=42)
-	#fit_and_predict(svc, "SVC", True)
+	random_forest = RandomForestClassifier(random_state=42)
+	fit_and_predict(random_forest, "RandomForestClassifier", True)
+
+	grad_boost = GradientBoostingClassifier(random_state=42)
+	fit_and_predict(grad_boost, "GradientBoostingClassifier", True)
+
+	ada_boost = AdaBoostClassifier(random_state=42)
+	fit_and_predict(ada_boost, "AdaBoostClassifier", True)
+
+	svc = SVC(probability=True, random_state=42)
+	fit_and_predict(svc, "SVC", True)
 
 	knn = KNeighborsClassifier()
 	fit_and_predict(knn, "KNeighborsClassifier", True)
 
-	rfc = RandomForestClassifier(random_state=42)
-	fit_and_predict(rfc, "RandomForestClassifier", True)
+	dec_tree = DecisionTreeClassifier(random_state=42)
+	fit_and_predict(dec_tree, "DecisionTreeClassifier", True)
 
-	mlp = MLPClassifier(random_state=42)
-	fit_and_predict(mlp, "MLPClassifier", True)
+	extra_trees = ExtraTreesClassifier(random_state=42)
+	fit_and_predict(extra_trees, "ExtraTreesClassifier", True)
 
-	#fit_and_predict(mlp_model, "mlp_model", False)
+	gauss_nb = GaussianNB()
+	fit_and_predict(gauss_nb, "GaussianNB", True)
 
-'''	gbr_model = GradientBoostingRegressor(learning_rate=0.3, min_samples_split=4, n_estimators=50, random_state=42)
-	fit_and_predict(gbr_model, "gbr_model", True)
-	fit_and_predict(gbr_model, "gbr_model", False)'''
+	qda = QuadraticDiscriminantAnalysis()
+	fit_and_predict(qda, "QuadraticDiscriminantAnalysis", True)
+
+	lightgbm = LGBMClassifier(random_state=42)
+	fit_and_predict(lightgbm, "LGBMClassifier", True)
+
+	catboost = CatBoostClassifier(random_state=42, verbose=0)
+	fit_and_predict(catboost, "CatBoostClassifier", True)
