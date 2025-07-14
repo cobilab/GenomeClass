@@ -3,16 +3,26 @@ A tool for the analysis and classification of genome sequences in the FASTA form
 
 ### REPLICATION ###
 
-Run the whole experiment in a Linux system with:
+Install the necessary dependencies in a Linux system with:
 <pre>
 git clone https://github.com/mirakaya/GenomeClass
 cd GenomeClass/src/
-make clean
-make
-./genomeclass -i Samples/rand_500_sequences.fasta -s -g -c -e
+./Installation.sh
 </pre>
 
-To see the possible execution options type
+To download the datasets type
+<pre>
+./Download_datasets.sh
+</pre>
+
+To analyse a dataset type
+<pre>
+make clean
+make
+./genomeclass -i sequences.fasta -s -g -c -e -m -t 4
+</pre>
+
+To see the possible analysis options type
 <pre>
 ./genomeclass -h
 </pre>
@@ -36,6 +46,36 @@ Program options -------------------------------------------------- -------------
 -t, --threads           Sets the number of threads.
 -v, --verbose           Verbose mode - disables progress bar and prints the results.
 ```
+
+To train the ML models and classify the sequences in a dataset type
+<pre>
+python3 genomeclass.py -f sequences_train.fasta -i sequences_to_classify.fasta
+</pre>
+
+To see the possible classification options type
+<pre>
+python3 genomeclass.py -h
+</pre>
+
+This will print the following options:
+```
+python3 genomeclass.py -f <input multi-FASTA file> -i <input (multi-)FASTA file>
+python3 genomeclass.py -t <input TSV file> -i <input (multi-)FASTA file>
+
+Index
+
+options:
+  -h, --help    show this help message and exit
+  -f F          Input multi-FASTA file
+  -t T          Input TSV file
+  -i I [I ...]  Input FASTA file containing the sequences to be classified
+  -s S          Part of the Sequence_id that will become the target feature
+  -m M          Machine learning model to be used. Default: RandomForestClassifier
+  -o O          Options for the execution of the C file. Please surround the options with ""
+  -p P          Add permutations of a certain number of characters
+  -a            Uses an auto balancer on the dataset
+```
+
 
 ### CITATION ###
 
