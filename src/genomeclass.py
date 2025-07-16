@@ -1,45 +1,20 @@
 import argparse
 import itertools
 import pickle
-import subprocess
-import time
 import os
 import warnings
-from operator import index
 from sklearn.utils.class_weight import compute_sample_weight
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
-
-from nltk.stem import PorterStemmer
-import string
-
-import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, average_precision_score
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import LabelEncoder, label_binarize
-from xgboost import XGBClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier, ExtraTreesClassifier
-from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
-from lightgbm import LGBMClassifier
-from catboost import CatBoostClassifier
 from xgboost import XGBClassifier
-
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
-from collections import Counter
 
 def change_sequence_id_column(df, num_split):
 
@@ -294,11 +269,8 @@ def fit_and_predict(model, name, is_test):
 		print("\n\nTesting the " + name + "...")
 
 		# Train the model
-		weights = compute_sample_weight(class_weight='balanced', y=y_train)
-		try:
-			model.fit(X_train, y_train, sample_weight=weights)
-		except:
-			model.fit(X_train, y_train)
+
+		model.fit(X_train, y_train)
 
 		# Make predictions
 		y_pred = model.predict(X_test)
@@ -347,9 +319,15 @@ def fit_and_predict(model, name, is_test):
 def balance_data(df):
 
 	target = 'Sequence_id'
+
+
+	for value in df[target].unique():
+
+		if (df[target] == value).sum() <= 15:
+			df = df[df[target] != value]
+
 	# Count instances per label
 	counts = df[target].value_counts()
-
 	factor = 3 * counts.mean()
 
 	for value in df[target].unique():
@@ -362,9 +340,6 @@ def balance_data(df):
 			# Drop those rows
 			df = df.drop(index=indices_to_remove)
 
-		elif (df[target] == value).sum() < 0.02 * factor or (df[target] == value).sum() <= 5:
-
-			df = df[df[target] != value]
 	return df
 
 def additional_removals (df):
@@ -449,15 +424,15 @@ if __name__ == '__main__':
 	if args.o != None:
 		options = args.o + permutations_added
 	else:
-		options = "-s -g -c -e -m -t 4" + permutations_added
+		options = "-s -g -c -e -m -t 7" + permutations_added
 
 	if args.f is not None and os.path.exists(args.f):
 		print("Using " + args.f + " as the input file. Running genomeclass...\n")
-		os.system("make clean")
-		os.system("make")
-		print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
-		os.system("./genomeclass -i " + args.f + " " + options)
-		dataset_name = "output.tsv"
+		#os.system("make clean")
+		#os.system("make")
+		#print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
+		#os.system("./genomeclass -i " + args.f + " " + options)
+		dataset_name = "output_snd.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
 		print("Using " + args.t[0] + "as the input file.\n")
@@ -514,6 +489,8 @@ if __name__ == '__main__':
 	# 3. Train/test split
 	X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
+	#X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42, stratify=Y)
+
 	# 4. Scale
 	'''scaler = StandardScaler()
 	X_train_scaled = scaler.fit_transform(X_train)
@@ -536,38 +513,12 @@ if __name__ == '__main__':
 	xgboost = XGBClassifier(random_state=42)
 	fit_and_predict(xgboost, "XGBClassifier", True)
 
-	log_reg = LogisticRegression(random_state=42)
-	fit_and_predict(log_reg, "LogisticRegression", True)
-
 	random_forest = RandomForestClassifier(random_state=42)
 	fit_and_predict(random_forest, "RandomForestClassifier", True)
-
-	grad_boost = GradientBoostingClassifier(random_state=42)
-	fit_and_predict(grad_boost, "GradientBoostingClassifier", True)
-
-	ada_boost = AdaBoostClassifier(random_state=42)
-	fit_and_predict(ada_boost, "AdaBoostClassifier", True)
-
-	svc = SVC(probability=True, random_state=42)
-	fit_and_predict(svc, "SVC", True)
 
 	knn = KNeighborsClassifier()
 	fit_and_predict(knn, "KNeighborsClassifier", True)
 
-	dec_tree = DecisionTreeClassifier(random_state=42)
-	fit_and_predict(dec_tree, "DecisionTreeClassifier", True)
+	mlp = MLPClassifier(random_state=42)
+	fit_and_predict(mlp, "MLPClassifier", True)
 
-	extra_trees = ExtraTreesClassifier(random_state=42)
-	fit_and_predict(extra_trees, "ExtraTreesClassifier", True)
-
-	gauss_nb = GaussianNB()
-	fit_and_predict(gauss_nb, "GaussianNB", True)
-
-	qda = QuadraticDiscriminantAnalysis()
-	fit_and_predict(qda, "QuadraticDiscriminantAnalysis", True)
-
-	lightgbm = LGBMClassifier(random_state=42)
-	fit_and_predict(lightgbm, "LGBMClassifier", True)
-
-	catboost = CatBoostClassifier(random_state=42, verbose=0)
-	fit_and_predict(catboost, "CatBoostClassifier", True)
