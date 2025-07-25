@@ -3,65 +3,20 @@ import itertools
 import pickle
 import os
 import warnings
-from sklearn.utils.class_weight import compute_sample_weight
+
+import shap
+from sklearn.decomposition import PCA
 import pandas as pd
 import seaborn as sns
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, average_precision_score
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import LabelEncoder, label_binarize
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.preprocessing import LabelEncoder, label_binarize, StandardScaler
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBClassifier
 import matplotlib.pyplot as plt
-
-def change_sequence_id_column(df, num_split):
-
-	df['Sequence_id'] = df['Sequence_id'].str.lower()
-
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split(',')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: ' '.join(x.split(' ')[1:]) if isinstance(x, str) else x)
-
-	df = df[~df.iloc[:, 0].astype(str).str.startswith('unverified:')]
-	df = df[~df.iloc[:, 0].astype(str).str.startswith('unverified_org:')]
-	df = df[~df.iloc[:, 0].astype(str).str.startswith('tpa_asm:')]
-	df = df[~df.iloc[:, 0].astype(str).str.startswith('mag:')]
-	
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('strain')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('contig')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('phage')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('isolate')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('clone')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('segment')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('gene')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('(')[0] if isinstance(x, str) else x)
-	df.iloc[:, 0] = df.iloc[:, 0].apply(lambda x: x.split('genome')[0] if isinstance(x, str) else x)
-
-	df['Sequence_id'] = df['Sequence_id'].str.replace('genome assembly', '', regex=False)
-	df['Sequence_id'] = df['Sequence_id'].str.replace('genome sequence', '', regex=False)
-	df['Sequence_id'] = df['Sequence_id'].str.replace('genomic sequence', '', regex=False)
-	df['Sequence_id'] = df['Sequence_id'].str.replace('complete', '', regex=False)
-	df['Sequence_id'] = df['Sequence_id'].str.replace('genomic', '', regex=False)
-
-	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if len(w) > 3]) if isinstance(x, str) else x)
-	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if '/' not in w]) if isinstance(x, str) else x)
-	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if '[' not in w]) if isinstance(x, str) else x)
-	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if 'kb' not in w]) if isinstance(x, str) else x)
-
-	
-	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if not w.startswith('-')]) if isinstance(x, str) else x)	
-
-	df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([w for w in x.split() if not w.endswith(']')]) if isinstance(x, str) else x)	
-	
-	
-	#stemmer = PorterStemmer()
-	#df['Sequence_id'] = df['Sequence_id'].apply(lambda x: ' '.join([stemmer.stem(word) for word in str(x).split()]))
-	
-	return df
-
-
-
 
 def import_files(filename):  # import the csv file
 
@@ -80,42 +35,6 @@ def import_files(filename):  # import the csv file
 	data = data[data['Sequence_id'].notna() & (data['Sequence_id'].str.strip() != '')]
 
 	return data
-
-
-def print_info(data):  # prints data information
-
-	# check dimensions
-	data.shape
-
-	# check the info on the columns - no null values
-	data.info()
-
-	# Summary of the numerical attributes
-	data.describe()
-
-
-def correlation(data):
-	# Delete less relevant features based on the correlation with the output variable
-	data_copy = data
-	data_copy.drop("Sequence id", axis=1, inplace=True)
-	cor = data_copy.corr()  # calculate correlations
-
-	sns.set(font_scale=1.3)
-
-	# Correlation graph
-	plt.figure(figsize=(22, 22))
-	sns.heatmap(cor, annot=True, cmap=sns.diverging_palette(20, 220, n=200), vmin=-1, vmax=1)
-	plt.savefig('correlation.pdf')
-	plt.savefig('correlation.jpg')
-	plt.show()
-
-
-# Correlation with output variable
-# list_columns_dropped = remove_low_correlation(data, cor_target)
-
-# return list_columns_dropped
-
-
 
 
 def drop_columns(data):
@@ -140,141 +59,16 @@ def print_to_files(info):
 	f_tex.close()
 	f_tsv.close()
 
-
-def cross_validation_MLPRegressor(X_train, y_train, y_test):
-	param_activation = ['tanh', 'relu']
-	param_solver = ['sgd', 'adam']
-	param_alpha = [0.0001, 0.001, 0.01, 0.1]
-	param_learning_rate = ['constant', 'adaptive']
-	param_hidden_layer_sizes = [(50, 50, 50), (50, 100, 50), (100,), (5, 5, 5), (50, 50), (5, 5), (2, 5, 2)]
-
-	for activation in param_activation:
-
-		for solver in param_solver:
-
-			for alpha in param_alpha:
-
-				for learning_rate in param_learning_rate:
-
-					for hidden_layer_sizes in param_hidden_layer_sizes:
-						model = MLPRegressor(hidden_layer_sizes=hidden_layer_sizes, activation=activation,
-											 solver=solver, alpha=alpha, learning_rate=learning_rate, random_state=42)
-
-						model.fit(X_train, y_train)
-						y_pred = model.predict(X_test)
-
-						# Evaluate the model's performance
-						mse = mean_squared_error(y_test, y_pred)
-						r2 = r2_score(y_test, y_pred)
-						mae = mean_absolute_error(y_test, y_pred)
-						mape = mean_absolute_percentage_error(y_test, y_pred)
-						print(hidden_layer_sizes, activation, solver, alpha, learning_rate)
-						print(f"Mean squared error: {mse:.2f}")
-						print(f"R-squared: {r2:.2f}")
-						print(f"Mean absolute error: {mae:.2f}")
-						print(f"Mean absolute percentage error: {mape:.2f}")
-
-						info = [hidden_layer_sizes, activation, solver, alpha, learning_rate, mse, r2, mae, mape]
-
-						print_to_files(info)
-
-
-def cross_validation_MLPRegressor_v2(X_train, y_train, y_test):
-	param_grid = {
-		'hidden_layer_sizes': [(20,), (15, 30), (15, 15), (10,), (10, 10), (20, 10), (10, 20), (20, 20)],
-		# 'hidden_layer_sizes': [(20, 20), (20, 20, 20), (20, 20, 20, 20)],
-		# 'hidden_layer_sizes': [(20,), (19,), (18,), (21,), (22,), (20, 5), (20, 20), (20, 30)],
-		'activation': ['relu'],
-		'solver': ['adam', 'sgd'],
-		'alpha': [0.01, 0.005, 0.05],
-		'learning_rate': ['constant', 'adaptive']
-	}
-
-	model = MLPRegressor(random_state=42)
-
-	cv = GridSearchCV(model, param_grid, n_jobs=6, verbose=10, cv=3)
-	cv.fit(X_train, y_train)
-	print(cv.best_estimator_)
-	print(cv.best_score_)
-	print(cv.best_params_)
-
-	return cv
-
-
-def cross_validation_GradientBoostingRegression(X_train, y_train, y_test):
-	param_grid = {
-		'loss': ["squared_error", "absolute_error"],
-		'learning_rate': [0.1, 0.2, 0.3],
-		'criterion': ["friedman_mse"],
-		'n_estimators': [15, 30, 50],
-		'min_samples_split': [2, 4]
-	}
-
-	model = GradientBoostingRegressor(random_state=42)
-
-	cv = GridSearchCV(model, param_grid, n_jobs=6, verbose=10, cv=3)
-	cv.fit(X_train, y_train)
-	print(cv.best_estimator_)
-	print(cv.best_score_)
-	print(cv.best_params_)
-
-	return cv
-
-
-def cross_validation_NNR(X_train, y_train, y_test):
-	param_grid = {
-		'n_neighbors': [1, 3, 5, 7, 9, 15],
-		'weights': ['uniform', 'distance'],
-		'algorithm': ['brute', 'auto'],
-	}
-
-	model = KNeighborsRegressor()
-
-	cv = GridSearchCV(model, param_grid, n_jobs=-1, verbose=10, cv=2, error_score='raise')
-	cv.fit(X_train, y_train)
-	print(cv.best_estimator_)
-	print(cv.best_score_)
-	print(cv.best_params_)
-
-	return cv
-
-
-def cross_validation_LinearRegression(X_train, y_train, y_test):
-	param_grid = {
-		'fit_intercept': [True, False],
-		'n_jobs': [-1],
-		'C': [1, 5, 10, 50, 100],
-		'gamma': ["scale", "auto"]
-	}
-
-	model = LinearRegression(random_state=42)
-
-	cv = GridSearchCV(model, param_grid, n_jobs=-1, verbose=1, cv=2)
-	cv.fit(X_train, y_train)
-	print(cv.best_estimator_)
-	print(cv.best_score_)
-	print(cv.best_params_)
-
-	return cv
-
-
-def generate_plots(data):
-	data.hist(bins=50, figsize=(20, 15))
-	plt.show()
-
-
 def fit_and_predict(model, name, is_test):
 	if is_test == True:
-		# Print model name
-		print("\n\nTesting the " + name + "...")
+
 
 		# Train the model
-
 		model.fit(X_train, y_train)
 
 		# Make predictions
 		y_pred = model.predict(X_test)
-		y_scores = model.predict_proba(X_test)  # shape: (n_samples, n_classes)
+		y_scores = model.predict_proba(X_test)
 
 		# Binarize true labels using only the model's classes
 		y_test_bin = label_binarize(y_test, classes=model.classes_)
@@ -290,15 +84,6 @@ def fit_and_predict(model, name, is_test):
 
 		# AUPRC (macro-averaged across classes)
 		auprc = average_precision_score(y_test_bin, y_scores, average='macro')
-
-		#print("Class distribution in y_test:")
-		#print(Counter(y_test))
-
-		#cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
-		#disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
-		#disp.plot(xticks_rotation=45)
-		#plt.title("Confusion Matrix")
-		#plt.show()
 
 		# Print results
 		print(f"Accuracy: {acc:.4f}")
@@ -328,7 +113,7 @@ def balance_data(df):
 
 	# Count instances per label
 	counts = df[target].value_counts()
-	factor = 3 * counts.mean()
+	factor = 2 * counts.mean()
 
 	for value in df[target].unique():
 
@@ -353,44 +138,39 @@ def additional_removals (df):
 
 	return df
 
-def show_correlation_matrix (X):
 
-	# Compute the correlation matrix
-	corr_matrix = X.corr().abs()
+def PCA_feature_analysis():
+	X_scaled = StandardScaler().fit_transform(X)
 
-	# Set up the matplotlib figure
-	plt.figure(figsize=(12, 10))
+	# Run PCA
+	pca = PCA(n_components=5)
+	pca.fit(X_scaled)
 
-	# Draw the heatmap with the mask and correct aspect ratio
-	sns.heatmap(corr_matrix,
-				cmap='coolwarm',
-				annot=False,
-				fmt=".2f",
-				cbar_kws={"shrink": .5})
+	# Loadings: how much each original feature contributes to each PC
+	loadings = pd.DataFrame(
+		pca.components_.T,
+		columns=[f'PC{i + 1}' for i in range(pca.n_components_)],
+		index=X.columns
+	)
 
-	plt.title("Feature Correlation Matrix", fontsize=16)
-	plt.tight_layout()
-	plt.show()
-
-def remove_highly_correlated_features(df, threshold):
-    corr_matrix = df.corr().abs()
-    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-    to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
-    print(f"Removed {len(to_drop)} highly correlated columns: {to_drop}")
-
-    return df.drop(columns=to_drop)
-
-def remove_lowly_correlated_features(df, threshold):
-    corr_matrix = df.corr().abs()
-    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-    to_drop = [column for column in upper.columns if any(upper[column] < threshold)]
-    print(f"Removed {len(to_drop)} lowly correlated columns: {to_drop}")
-
-    return df.drop(columns=to_drop)
+	# Optional: plot loading magnitudes for PC1
+	print(loadings['PC1'].abs().sort_values(ascending=False).head(10))
 
 
+def calculate_cv_scores(model, name):
+	# Print model name
+	print("\n\nTesting the " + name + "...")
+
+	scores = cross_val_score(model, X_train, y_train, cv=4)
+
+	# Mean and standard deviation
+	mean_score = np.mean(scores)
+	std_dev = np.std(scores)
 
 
+	print(f"Cross-validation scores: {scores}")
+	print(f"Mean accuracy: {mean_score:.3f}")
+	print(f"Standard deviation: {std_dev:.3f}")
 
 
 if __name__ == '__main__':
@@ -426,27 +206,29 @@ if __name__ == '__main__':
 	else:
 		options = "-s -g -c -e -m -t 7" + permutations_added
 
-	if args.f is not None and os.path.exists(args.f):
-		print("Using " + args.f + " as the input file. Running genomeclass...\n")
-		#os.system("make clean")
-		#os.system("make")
-		#print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
-		#os.system("./genomeclass -i " + args.f + " " + options)
-		dataset_name = "output_snd.tsv"
+	if args.f is not None and os.path.exists(args.f) and args.i is not None and os.path.exists(args.i):
+
+		print("Using " + args.f + " as the input file.\n")
+		print("File to be classified: " + args.i[0] + "\n")
+		os.system("make clean")
+		os.system("make")
+		print("\n./genomeclass -i " + args.f + " " + options + "\n\n")
+		os.system("./genomeclass -i " + args.f + " " + options)
+		dataset_name = "output.tsv"
+
+		print("\n./genomeclass -i " + args.i + " " + options + " -o test.tsv\n\n")
+		os.system("./genomeclass -i " + args.i + " " + options + " -o test.tsv")
+		test_irl = "test.tsv"
 
 	elif args.t is not None and os.path.exists(args.t):
-		print("Using " + args.t[0] + "as the input file.\n")
+		print("Using " + args.t + " as the input file.\n")
 		dataset_name = args.t
 
 	else:
-		print("No input file. Exiting.")
+		print("Invalid input files. Exiting.")
 		exit(1)
 
-	if args.i is not None:
-		print("File to be classified: " + args.i[0] + "\n")
-	else:
-		print("No file to classify. Exiting.")
-		exit(1)
+
 
 	pd.set_option('display.max_columns', 30)
 
@@ -468,7 +250,7 @@ if __name__ == '__main__':
 	value_counts = data['Sequence_id'].value_counts()
 	
 	for seq_id, count in value_counts.items():
-	    print(f"{seq_id}: {count}")
+		print(f"{seq_id}: {count}")
 
 	print(data['Sequence_id'].value_counts())
 
@@ -479,46 +261,57 @@ if __name__ == '__main__':
 	# Start training process
 	print(data.shape)
 
+	# Separate features and target first
+	X, Y = drop_columns(data)
 
-	# 1. Separate features and target first
-	X, Y = drop_columns(data)  # Your function that splits features and target
-	#show_correlation_matrix(X)
-	#X = remove_highly_correlated_features(X, 0.95)
-	#X = remove_lowly_correlated_features(X, 0.02)
+	PCA_feature_analysis()
 
-	# 3. Train/test split
-	X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+	# Train/test split (stratified)
+	X_train, X_test, y_train, y_test = train_test_split(X, Y, stratify=Y, test_size=0.2, random_state=42)
 
-	#X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42, stratify=Y)
-
-	# 4. Scale
-	'''scaler = StandardScaler()
-	X_train_scaled = scaler.fit_transform(X_train)
-	X_test_scaled = scaler.transform(X_test)
-
-	# 5. Optional: PCA
-	pca = PCA(n_components=0.95)
-	X_train_pca = pca.fit_transform(X_train_scaled)
-	X_test_pca = pca.transform(X_test_scaled)
-
-	X_train = X_train_pca
-	X_test = X_test_pca
-
-	print(f"Original data shape: {data.shape}")
-	print(f"Shape after drop_columns: {X.shape[1]} features")
-	print(f"Shape after removing correlated features: {X.shape[1]} features")
-	print(f"Shape after PCA: {X_train_pca.shape[1]} components")'''
-
-	# train and save models
+	# Set models
 	xgboost = XGBClassifier(random_state=42)
+	random_forest = RandomForestClassifier(random_state=42)
+	knn = KNeighborsClassifier()
+	mlp = MLPClassifier(random_state=42)
+
+	# Get performance in the cross validation and train the models on the entire training set
+
+	calculate_cv_scores(xgboost, "XGBClassifier")
 	fit_and_predict(xgboost, "XGBClassifier", True)
 
-	random_forest = RandomForestClassifier(random_state=42)
+	calculate_cv_scores(random_forest, "RandomForestClassifier")
 	fit_and_predict(random_forest, "RandomForestClassifier", True)
 
-	knn = KNeighborsClassifier()
+	calculate_cv_scores(knn, "KNeighborsClassifier")
 	fit_and_predict(knn, "KNeighborsClassifier", True)
 
-	mlp = MLPClassifier(random_state=42)
+	calculate_cv_scores(mlp, "MLPClassifier")
 	fit_and_predict(mlp, "MLPClassifier", True)
+
+
+	# Save the models - TODO
+
+
+
+	'''if args.i is not None:
+		X_train = X
+		y_train = Y
+
+		test_data = import_files(args.i)
+
+		X_test, y_test = drop_columns(test_data)
+
+		#xgboost = XGBClassifier(random_state=42)
+		#fit_and_predict(xgboost, "XGBClassifier", True)
+
+		random_forest = RandomForestClassifier(random_state=42)
+		fit_and_predict(random_forest, "RandomForestClassifier", True)
+
+		knn = KNeighborsClassifier()
+		fit_and_predict(knn, "KNeighborsClassifier", True)
+
+		mlp = MLPClassifier(random_state=42)
+		fit_and_predict(mlp, "MLPClassifier", True)
+'''
 
