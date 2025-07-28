@@ -59,8 +59,17 @@ def print_to_files(info):
 	f_tex.close()
 	f_tsv.close()
 
+
+def write_to_file(string_to_write):
+
+	with open(file_tsv, 'a') as file:
+		file.write(string_to_write)
+
+
 def fit_and_predict(model, name, is_test):
 	if is_test == True:
+
+		scores, mean_score, std_dev = calculate_cv_scores(model, name)
 
 
 		# Train the model
@@ -90,6 +99,19 @@ def fit_and_predict(model, name, is_test):
 		print(f"F1 Score: {f1:.4f}")
 		print(f"AUROC: {auroc:.4f}")
 		print(f"AUPRC: {auprc:.4f}")
+
+		string_to_write = (
+				str(name) + "\t" +
+				str(scores) + "\t" +
+				str(mean_score) + "\t" +
+				str(std_dev) + "\t" +
+				str(acc) + "\t" +
+				str(f1) + "\t" +
+				str(auroc) + "\t" +
+				str(auprc) + "\n"
+		)
+
+		write_to_file(string_to_write)
 
 	else:
 		print("Saving the " + name + "...")
@@ -172,6 +194,8 @@ def calculate_cv_scores(model, name):
 	print(f"Mean accuracy: {mean_score:.3f}")
 	print(f"Standard deviation: {std_dev:.3f}")
 
+	return scores, mean_score, std_dev
+
 
 if __name__ == '__main__':
 
@@ -237,6 +261,9 @@ if __name__ == '__main__':
 	if os.path.exists(file_tsv):
 		os.remove(file_tsv)
 
+
+	write_to_file("Name_model\tScores_CV\tMean_score_CV\tStd_deviation\tAccuracy\tF1-score\tAUROC\tAUPRC\n")
+
 	data = import_files(dataset_name)
 
 	#print(data.dtypes)
@@ -277,20 +304,18 @@ if __name__ == '__main__':
 
 	# Get performance in the cross validation and train the models on the entire training set
 
-	calculate_cv_scores(xgboost, "XGBClassifier")
 	fit_and_predict(xgboost, "XGBClassifier", True)
-
-	calculate_cv_scores(random_forest, "RandomForestClassifier")
 	fit_and_predict(random_forest, "RandomForestClassifier", True)
-
-	calculate_cv_scores(knn, "KNeighborsClassifier")
 	fit_and_predict(knn, "KNeighborsClassifier", True)
-
-	calculate_cv_scores(mlp, "MLPClassifier")
 	fit_and_predict(mlp, "MLPClassifier", True)
 
 
-	# Save the models - TODO
+	# Save the models
+
+	'''fit_and_predict(xgboost, "XGBClassifier", False)
+	fit_and_predict(random_forest, "RandomForestClassifier", False)
+	fit_and_predict(knn, "KNeighborsClassifier", False)
+	fit_and_predict(mlp, "MLPClassifier", False)'''
 
 
 
