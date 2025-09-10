@@ -155,6 +155,12 @@ int option_parsing(int argc, char *argv[]) {
         remove(output_path);
     }
 
+    int res = check_if_fa_or_fq(path_input_file, number_of_threads);
+
+    if (res != 0) {
+        exit(1);
+    }
+
     // Print execution options
     printf("Number of threads: %d\n", number_of_threads);
     printf("Input file: %s\n", path_input_file ? path_input_file : "None");

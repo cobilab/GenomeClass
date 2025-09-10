@@ -6,6 +6,7 @@ conda create -n genomeclass -y
 conda activate genomeclass
 conda install -c conda-forge ncbi-datasets-cli -y
 conda install -c bioconda geco3 -y
+conda install -c bioconda spades -y
 #
 pip install scikit-learn
 pip install nltk

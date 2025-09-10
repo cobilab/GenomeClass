@@ -118,3 +118,61 @@ char *remove_newline_and_tab_characters(char *text_to_clean){
 
 }
 
+int check_if_fa_or_fq (char *file_name, int threads) {
+
+
+    char command_spades[512];
+    char new_path[100];
+    char *dot = strrchr(file_name, '.');  // find last occurrence of '.'
+
+    if (dot != NULL && *(dot + 1) != '\0') {
+        printf("\n\nAfter last . :-%s-\n", dot + 1);
+
+        if (strcmp(dot+1, "fasta") == 0 || strcmp(dot+1, "fa") == 0) {
+            printf("FASTA file detected\n");
+            return 0;
+
+        } else if (strcmp(dot+1, "fastq") == 0 || strcmp(dot+1, "fq") == 0) {
+            printf("FASTQ file detected - reconstructing the sample\n");
+
+            
+            // Build spades command 
+            snprintf(command_spades, sizeof(command_spades), "conda run -n genomeclass spades.py -s %s -o spades_output -t %d", file_name, threads);
+
+            
+            // Run the spades command
+            int ret = system(command_spades);
+            if (ret != 0) {
+                fprintf(stderr, "spades command failed with return code %d\n", ret);
+                return -1;
+            }
+
+            if (fopen("spades_output/contigs.fasta", "r")) {
+                printf("Contig file exists!\n");
+                snprintf(new_path, sizeof(new_path), "mv spades_output/contigs.fasta %s", file_name);
+                system(new_path);
+                remove("spades_output");
+                return 0;
+            } else if (fopen("spades_output/scaffolds.fasta", "r")) {
+                printf("File does not exist.\n");
+                snprintf(new_path, sizeof(new_path), "mv spades_output/scaffolds.fasta %s", file_name);
+                system(new_path);
+                remove("spades_output");
+                return 0;
+                
+            } else {
+                return 1;
+            }
+
+        } else {
+            printf("Error - The input file is not supported.\n");
+            return 1;
+        }
+    } else {
+        printf("Error - The input file is not supported.\n");
+        return 1;
+    }
+
+}
+
+
