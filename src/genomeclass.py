@@ -232,52 +232,50 @@ if __name__ == '__main__':
 
 	warnings.filterwarnings("ignore")
 
-	parser = argparse.ArgumentParser(description="Index", usage="Training and testing\n\npython3 genomeclass.py -f <input multi-FASTA file> -i <input (multi-)FASTA file>\n"
-																"python3 genomeclass.py -t <input TSV file> -i <input (multi-)FASTA file>\n")
+	parser = argparse.ArgumentParser(description="Index")
 
-	parser.add_argument("-tf", help="Input training multi-FASTA file", type=str)
-	parser.add_argument("-tt", help="Input training TSV file", type=str)
-	parser.add_argument("-cf", help="Input FASTA file containing the sequences to be classified", type=str, required=False)
-	parser.add_argument("-ct", help="Input TSV file containing the sequences to be classified", type=str,
-						required=False)
-	parser.add_argument("-s", help="Part of the Sequence_id that will become the target feature", type=int)
-	parser.add_argument("-m", help="Machine learning model to be used. Default: RandomForestClassifier", type=str)
-	parser.add_argument("-o", help="Options for the execution of the C file. Please surround the options with \"\"", type=str)
-	parser.add_argument("-p", help="Add permutations of a certain number of characters", action='append', type=int, required=False)
-	parser.add_argument("-a", help="Uses an auto balancer on the dataset", action='store_true', required=False)
+	parser.add_argument("-tf", "--training_fasta", help="Input training multi-FASTA file", type=str, metavar="<training_file>")
+	parser.add_argument("-tt", "--training_tsv", help="Input training TSV file", type=str, metavar="<training_file>")
+	parser.add_argument("-cf", "--classification_fasta", help="Input FASTA file containing the sequences to be classified", type=str, required=False, metavar="<file_to_classify>")
+	parser.add_argument("-ct", "--classification_tsv", help="Input TSV file containing the sequences to be classified", type=str,
+						required=False, metavar="<file_to_classify>")
+	parser.add_argument("-s", "--segment", help="Part of the Sequence_id that will become the target feature", type=int, metavar="<position>")
+	parser.add_argument("-o", "--analysis_options", help="Options for the execution of the C file. Please surround the options with \"\"", type=str, metavar="<analysis_options>")
+	parser.add_argument("-p", "--permutations", help="Add permutations of a certain number of characters", action='append', type=int, required=False, metavar="<number_bases_permutations>")
+	parser.add_argument("-b", "--balance", help="Balances the training dataset", action='store_true', required=False)
 	args = parser.parse_args()
 
 	permutations_added = ""
-	if args.p != None:
+	if args.permutations != None:
 		chars = ['A', 'C', 'T', 'G']
 
-		for i in args.p:
+		for i in args.permutations:
 
 			permutations = [''.join(p) for p in itertools.product(chars, repeat=i)]
 			for j in permutations:
 				permutations_added += " -d "
 				permutations_added += j
 
-	if args.o != None:
-		options = args.o + permutations_added
+	if args.analysis_options != None:
+		options = args.analysis_options + permutations_added
 	else:
 		options = "-s -g -c -e -m -t 7" + permutations_added
 
-	if args.tf is not None and os.path.exists(args.tf) :
+	if args.training_fasta is not None and os.path.exists(args.training_fasta) :
 
-		print("Using " + args.tf + " as the training file and " + args.cf + " as the file to be classified.\n")
-		#print("File to be classified: " + args.cf[0] + "\n")
+		print("Using " + args.training_fasta + " as the training file and " + args.classification_fasta + " as the file to be classified.\n")
+		#print("File to be classified: " + args.classification_fasta[0] + "\n")
 		os.system("make clean")
 		os.system("make")
 
 		print("Analysing the training file.\n")
 		dataset_name = "output_test.tsv"
-		print("\n./genomeclass -i " + args.tf + " " + options + " -o " + dataset_name + "\n\n")
-		os.system("./genomeclass -i " + args.tf + " " + options + " -o " + dataset_name)
+		print("\n./genomeclass -i " + args.training_fasta + " " + options + " -o " + dataset_name + "\n\n")
+		os.system("./genomeclass -i " + args.training_fasta + " " + options + " -o " + dataset_name)
 
-	elif args.tt is not None and os.path.exists(args.tt):
-		print("Using " + args.tt + " as the input file.\n")
-		dataset_name = args.tt
+	elif args.training_tsv is not None and os.path.exists(args.training_tsv):
+		print("Using " + args.training_tsv + " as the input file.\n")
+		dataset_name = args.training_tsv
 
 	else:
 		print("Invalid input files. Exiting.")
@@ -289,16 +287,16 @@ if __name__ == '__main__':
 	if os.path.exists(file_tsv):
 		os.remove(file_tsv)
 
-	write_to_file("S" + str(args.s) + "_Name_model\tScores_CV\tMean_score_CV\tStd_deviation\tAccuracy\tF1-score\tAUROC\tAUPRC\n")
+	write_to_file("S" + str(args.segment) + "_Name_model\tScores_CV\tMean_score_CV\tStd_deviation\tAccuracy\tF1-score\tAUROC\tAUPRC\n")
 
 	# Import training data
-	data_tds = import_files(dataset_name, args.s)
+	data_tds = import_files(dataset_name, args.segment)
 
 	# Minimal balancing, removes classes with 2 or less instances - avoids execution errors
 	data_tds = min_balancing(data_tds)
 	
 	# Balances the data if wanted
-	if args.a:
+	if args.balance:
 		data_tds = balance_data(data_tds)
 	data_tds = additional_removals(data_tds)
 	
@@ -330,23 +328,23 @@ if __name__ == '__main__':
 	test_irl = "test.tsv"
 
 	# If there is real data to be classified - FASTA format
-	if args.cf is not None and os.path.exists(args.cf):
+	if args.classification_fasta is not None and os.path.exists(args.classification_fasta):
 
 		print("Analysing the file to be classified.\n")
-		print("\n./genomeclass -i " + args.cf + " " + options + " -o " + test_irl + "\n\n")
-		os.system("./genomeclass -i " + args.cf + " " + options + " -o " + test_irl)
+		print("\n./genomeclass -i " + args.classification_fasta + " " + options + " -o " + test_irl + "\n\n")
+		os.system("./genomeclass -i " + args.classification_fasta + " " + options + " -o " + test_irl)
 
 	# If there is real data to be classified - TSV format
-	elif args.ct is not None and os.path.exists(args.ct):
-		print("Using " + args.ct + " as the input file.\n")
-		test_irl = args.ct
+	elif args.classification_tsv is not None and os.path.exists(args.classification_tsv):
+		print("Using " + args.classification_tsv + " as the input file.\n")
+		test_irl = args.classification_tsv
 
 	else:
 		print("File to be classified is not available. Exiting...")
 		exit(1)
 
 	# Import data to be classified
-	data_clf = import_files(test_irl, args.s)
+	data_clf = import_files(test_irl, args.segment)
 
 	# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
 	data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Prob_sequence_')]
