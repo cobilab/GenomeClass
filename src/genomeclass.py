@@ -1,5 +1,4 @@
 import argparse
-import csv
 import itertools
 import pickle
 import os
@@ -17,7 +16,8 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBClassifier
-import matplotlib.pyplot as plt
+
+
 
 def import_files(filename, sep):  # import the csv file
 
@@ -129,8 +129,7 @@ def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_tes
 		# save model
 		filename = name + '.sav'
 		pickle.dump(model, open(filename, 'wb'))
-		
-		return ml_model
+
 
 
 def balance_data(df):
@@ -316,26 +315,17 @@ if __name__ == '__main__':
 	X_train_tds, X_test_tds, y_train_tds, y_test_tds = train_test_split(X_tds, Y_tds, stratify=Y_tds, test_size=0.2, random_state=42)
 
 	# Set models
-	xgboost = XGBClassifier(random_state=42)
-	random_forest = RandomForestClassifier(random_state=42)
-	knn = KNeighborsClassifier()
-	mlp = MLPClassifier(random_state=42)
+	models_considered = [ ["XGBClassifier", XGBClassifier(random_state=42)] , [ "RandomForestClassifier", RandomForestClassifier(random_state=42)], [ "KNeighborsClassifier", KNeighborsClassifier()], [ "MLPClassifier", MLPClassifier(random_state=42)]]
 
-	# Get performance in the cross validation and train the models on the entire training set
-	fit_and_predict(xgboost, "XGBClassifier", True, X_train_tds, y_train_tds, X_test_tds, y_test_tds)
-	fit_and_predict(random_forest, "RandomForestClassifier", True, X_train_tds, y_train_tds, X_test_tds, y_test_tds)
-	fit_and_predict(knn, "KNeighborsClassifier", True, X_train_tds, y_train_tds, X_test_tds, y_test_tds)
-	fit_and_predict(mlp, "MLPClassifier", True, X_train_tds, y_train_tds, X_test_tds, y_test_tds)
+	for i in models_considered:
+		# Get performance in the cross validation and train the models on the entire training set
+		fit_and_predict(i[1], i[0], True, X_train_tds, y_train_tds, X_test_tds, y_test_tds)
+
+		# Save the models
+		fit_and_predict(i[1], i[0], False, X_tds, Y_tds)
 
 
-	# Save the models
-	xgbmodel_trained = fit_and_predict(xgboost, "XGBClassifier", False, X_tds, Y_tds)
-	rfmodel_trained = fit_and_predict(random_forest, "RandomForestClassifier", False, X_tds, Y_tds)
-	knnmodel_trained = fit_and_predict(knn, "KNeighborsClassifier", False, X_tds, Y_tds)
-	mlpmodel_trained = fit_and_predict(mlp, "MLPClassifier", False, X_tds, Y_tds)
-
-
-	# Begining classification of outside sequences
+	# Beginning classification of outside sequences
 
 	test_irl = "test.tsv"
 
@@ -367,23 +357,16 @@ if __name__ == '__main__':
 	# Separate features and target first
 	X_clf, Y_clf, le_clf = drop_columns(data_clf)
 
-	# Predict the classifications
-	predictions_xgb = xgbmodel_trained.predict(X_clf)
-	predictions_rf = rfmodel_trained.predict(X_clf)
-	predictions_knn = knnmodel_trained.predict(X_clf)
-	predictions_mlp = mlpmodel_trained.predict(X_clf)
+	for i in models_considered:
 
-	predicted_labels_xgb = le.inverse_transform(predictions_xgb)
-	predicted_labels_rf = le.inverse_transform(predictions_rf)
-	predicted_labels_knn = le.inverse_transform(predictions_knn)
-	predicted_labels_mlp = le.inverse_transform(predictions_mlp)
+		# Predict the classifications
+		with open(i[0] + '.sav', 'rb') as file:
+			ml_model_trained = pickle.load(file)
+			predictions = ml_model_trained.predict(X_clf)
+			predicted_labels = le.inverse_transform(predictions)
 
-	# Write predictions to a TSV file
-	write_predictions(data_clf, predicted_labels_xgb, "predictions_xgboost.tsv")
-	write_predictions(data_clf, predicted_labels_rf, "predictions_randforest.tsv")
-	write_predictions(data_clf, predicted_labels_knn, "predictions_knn.tsv")
-	write_predictions(data_clf, predicted_labels_mlp, "predictions_mlp.tsv")
-
+			# Write predictions to a TSV file
+			write_predictions(data_clf, predicted_labels, "predictions_" + i[0] + ".tsv")
 
 
 
