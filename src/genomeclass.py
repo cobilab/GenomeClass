@@ -236,9 +236,11 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="Index", usage="Training and testing\n\npython3 genomeclass.py -f <input multi-FASTA file> -i <input (multi-)FASTA file>\n"
 																"python3 genomeclass.py -t <input TSV file> -i <input (multi-)FASTA file>\n")
 
-	parser.add_argument("-f", help="Input multi-FASTA file", type=str)
-	parser.add_argument("-t", help="Input TSV file", type=str)
-	parser.add_argument("-i", help="Input FASTA file containing the sequences to be classified", type=str, required=False)
+	parser.add_argument("-tf", help="Input training multi-FASTA file", type=str)
+	parser.add_argument("-tt", help="Input training TSV file", type=str)
+	parser.add_argument("-cf", help="Input FASTA file containing the sequences to be classified", type=str, required=False)
+	parser.add_argument("-ct", help="Input TSV file containing the sequences to be classified", type=str,
+						required=False)
 	parser.add_argument("-s", help="Part of the Sequence_id that will become the target feature", type=int)
 	parser.add_argument("-m", help="Machine learning model to be used. Default: RandomForestClassifier", type=str)
 	parser.add_argument("-o", help="Options for the execution of the C file. Please surround the options with \"\"", type=str)
@@ -262,30 +264,21 @@ if __name__ == '__main__':
 	else:
 		options = "-s -g -c -e -m -t 7" + permutations_added
 
-	print(os.path.exists(args.i))
+	if args.tf is not None and os.path.exists(args.tf) :
 
-	if args.f is not None and os.path.exists(args.f) and args.i is not None and os.path.exists(args.i):
-
-		print("Using " + args.f + " as the training file and " + args.i + " as the file to be classified.\n")
-		#print("File to be classified: " + args.i[0] + "\n")
+		print("Using " + args.tf + " as the training file and " + args.cf + " as the file to be classified.\n")
+		#print("File to be classified: " + args.cf[0] + "\n")
 		os.system("make clean")
 		os.system("make")
 
 		print("Analysing the training file.\n")
 		dataset_name = "output_test.tsv"
-		print("\n./genomeclass -i " + args.f + " " + options + " -o " + dataset_name + "\n\n")
-		os.system("./genomeclass -i " + args.f + " " + options + " -o " + dataset_name)
+		print("\n./genomeclass -i " + args.tf + " " + options + " -o " + dataset_name + "\n\n")
+		os.system("./genomeclass -i " + args.tf + " " + options + " -o " + dataset_name)
 
-
-		print("Analysing the file to be classified.\n")
-		test_irl = "test.tsv"
-		print("\n./genomeclass -i " + args.i + " " + options + " -o " + test_irl + "\n\n")
-		os.system("./genomeclass -i " + args.i + " " + options + " -o " + test_irl)
-
-
-	elif args.t is not None and os.path.exists(args.t):
-		print("Using " + args.t + " as the input file.\n")
-		dataset_name = args.t
+	elif args.tt is not None and os.path.exists(args.tt):
+		print("Using " + args.tt + " as the input file.\n")
+		dataset_name = args.tt
 
 	else:
 		print("Invalid input files. Exiting.")
@@ -342,36 +335,55 @@ if __name__ == '__main__':
 	mlpmodel_trained = fit_and_predict(mlp, "MLPClassifier", False, X_tds, Y_tds)
 
 
-	# If there is real data to be classified
-	if args.i != None:
+	# Begining classification of outside sequences
 
-		# Import data to be classified
-		data_clf = import_files(test_irl, args.s)
+	test_irl = "test.tsv"
 
-		# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
-		data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Prob_sequence_')]
+	# If there is real data to be classified - FASTA format
+	if args.cf is not None and os.path.exists(args.cf):
 
-		# -> Train the models on the training dataset
-		print(data_clf.shape)
+		print("Analysing the file to be classified.\n")
+		print("\n./genomeclass -i " + args.cf + " " + options + " -o " + test_irl + "\n\n")
+		os.system("./genomeclass -i " + args.cf + " " + options + " -o " + test_irl)
 
-		# Separate features and target first
-		X_clf, Y_clf, le_clf = drop_columns(data_clf)
+	# If there is real data to be classified - TSV format
+	elif args.ct is not None and os.path.exists(args.ct):
+		print("Using " + args.ct + " as the input file.\n")
+		test_irl = args.ct
 
-		# Predict the classifications
-		predictions_xgb = xgbmodel_trained.predict(X_clf)
-		predictions_rf = rfmodel_trained.predict(X_clf)
-		predictions_knn = knnmodel_trained.predict(X_clf)
-		predictions_mlp = mlpmodel_trained.predict(X_clf)
+	else:
+		print("File to be classified is not available. Exiting...")
+		exit(1)
 
-		predicted_labels_xgb = le.inverse_transform(predictions_xgb)
-		predicted_labels_rf = le.inverse_transform(predictions_rf)
-		predicted_labels_knn = le.inverse_transform(predictions_knn)
-		predicted_labels_mlp = le.inverse_transform(predictions_mlp)
+	# Import data to be classified
+	data_clf = import_files(test_irl, args.s)
 
-		# Write predictions to a TSV file
-		write_predictions(data_clf, predicted_labels_xgb, "predictions_xgboost.tsv")
-		write_predictions(data_clf, predicted_labels_rf, "predictions_randforest.tsv")
-		write_predictions(data_clf, predicted_labels_knn, "predictions_knn.tsv")
-		write_predictions(data_clf, predicted_labels_mlp, "predictions_mlp.tsv")
+	# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
+	data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Prob_sequence_')]
+
+	# -> Train the models on the training dataset
+	print(data_clf.shape)
+
+	# Separate features and target first
+	X_clf, Y_clf, le_clf = drop_columns(data_clf)
+
+	# Predict the classifications
+	predictions_xgb = xgbmodel_trained.predict(X_clf)
+	predictions_rf = rfmodel_trained.predict(X_clf)
+	predictions_knn = knnmodel_trained.predict(X_clf)
+	predictions_mlp = mlpmodel_trained.predict(X_clf)
+
+	predicted_labels_xgb = le.inverse_transform(predictions_xgb)
+	predicted_labels_rf = le.inverse_transform(predictions_rf)
+	predicted_labels_knn = le.inverse_transform(predictions_knn)
+	predicted_labels_mlp = le.inverse_transform(predictions_mlp)
+
+	# Write predictions to a TSV file
+	write_predictions(data_clf, predicted_labels_xgb, "predictions_xgboost.tsv")
+	write_predictions(data_clf, predicted_labels_rf, "predictions_randforest.tsv")
+	write_predictions(data_clf, predicted_labels_knn, "predictions_knn.tsv")
+	write_predictions(data_clf, predicted_labels_mlp, "predictions_mlp.tsv")
+
+
 
 
