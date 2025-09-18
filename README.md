@@ -49,7 +49,7 @@ Program options -------------------------------------------------- -------------
 
 To train the ML models and classify the sequences in a dataset type
 <pre>
-python3 genomeclass.py -f sequences_train.fasta -i sequences_to_classify.fasta
+python3 genomeclass.py -tf sequences_train.fasta -cf sequences_to_classify.fasta
 </pre>
 
 To see the possible classification options type
@@ -59,21 +59,35 @@ python3 genomeclass.py -h
 
 This will print the following options:
 ```
-python3 genomeclass.py -f <input multi-FASTA file> -i <input (multi-)FASTA file>
-python3 genomeclass.py -t <input TSV file> -i <input (multi-)FASTA file>
+usage: genomeclass.py [-h] [-tf <training_file>] [-tt <training_file>]
+                      [-cf <file_to_classify>] [-ct <file_to_classify>]
+                      [-s <position>] [-o <analysis_options>]
+                      [-p <number_bases_permutations>] [-b]
 
 Index
 
 options:
-  -h, --help    show this help message and exit
-  -f F          Input multi-FASTA file
-  -t T          Input TSV file
-  -i I [I ...]  Input FASTA file containing the sequences to be classified
-  -s S          Part of the Sequence_id that will become the target feature
-  -m M          Machine learning model to be used. Default: RandomForestClassifier
-  -o O          Options for the execution of the C file. Please surround the options with ""
-  -p P          Add permutations of a certain number of characters
-  -a            Uses an auto balancer on the dataset
+  -h, --help            show this help message and exit
+  -tf <training_file>, --training_fasta <training_file>
+                        Input training multi-FASTA file
+  -tt <training_file>, --training_tsv <training_file>
+                        Input training TSV file
+  -cf <file_to_classify>, --classification_fasta <file_to_classify>
+                        Input FASTA file containing the sequences to be
+                        classified
+  -ct <file_to_classify>, --classification_tsv <file_to_classify>
+                        Input TSV file containing the sequences to be
+                        classified
+  -s <position>, --segment <position>
+                        Part of the Sequence_id that will become the target
+                        feature
+  -o <analysis_options>, --analysis_options <analysis_options>
+                        Options for the execution of the C file. Please
+                        surround the options with ""
+  -p <number_bases_permutations>, --permutations <number_bases_permutations>
+                        Add permutations of a certain number of characters
+  -b, --balance         Balances the training dataset
+
 ```
 
 
