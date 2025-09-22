@@ -58,19 +58,26 @@ void progress_bar(int total_tasks) {
     int percentage_int = (int)(percentage * 100);
     int width = get_screen_width();
 
-    int pos = (int)(width * percentage);
+    // Reserve space for " 100% (xxxx/xxxx)" ≈ 20 chars
+    int reserved = 20;
+    int bar_width = width - reserved;
+    if (bar_width < 10) bar_width = 10; // fallback if terminal is too small
+
+    int pos = (int)(bar_width * percentage);
 
     printf("\r[");
-    for (int i = 0; i < width - 7; i++) {  // -7 to make room for " 100%"
+    for (int i = 0; i < bar_width; i++) {
         if (i < pos) printf("=");
         else if (i == pos) printf(">");
         else printf(" ");
     }
-    printf("] %3d%%", percentage_int);
+    printf("] %3d%% (%d/%d)", percentage_int, tasks_done, total_tasks);
     fflush(stdout);
 
     pthread_mutex_unlock(&tasks_done_mutex);
 }
+
+
 
 char * concatenate_strings(char *original_content, char *content_to_append, int add_tab) {
 
@@ -126,7 +133,7 @@ int check_if_fa_or_fq (char *file_name, int threads) {
     char *dot = strrchr(file_name, '.');  // find last occurrence of '.'
 
     if (dot != NULL && *(dot + 1) != '\0') {
-        printf("\n\nAfter last . :-%s-\n", dot + 1);
+        //printf("\n\nAfter last . :-%s-\n", dot + 1);
 
         if (strcmp(dot+1, "fasta") == 0 || strcmp(dot+1, "fa") == 0) {
             printf("FASTA file detected\n");

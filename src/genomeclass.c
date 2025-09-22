@@ -26,12 +26,14 @@ int number_sequences_calc_distance = 0;
 char *output_path = "output.tsv";
 int calculate_size = 0;
 int calculate_gc_content = 0;
+int calculate_base_percentage = 0;
 Seq_data *data_all_sequences = NULL;
 int number_sequences = 0;
 int number_tasks_assigned = 0;
 long long int number_pos_data_sequence = 100000000;
 int calculate_compression = 0;
-int compression_geco;
+int compression_geco = 0;
+int compression_jarvis3 = 0;
 int max_number_bases = 0;
 int help_menu = 0;
 int verbose = 0;
@@ -52,10 +54,12 @@ static struct option long_options[] = {
     {"output", required_argument, 0, 'o'},
     {"size", no_argument, 0, 's'},
     {"gc_content", no_argument, 0, 'g'},
+    {"base_percentage", no_argument, 0, 'b'},
     {"normalized_compression", no_argument, 0, 'c'},
     {"entropy", no_argument, 0, 'e'},
     {"melting", no_argument, 0, 'm'},
     {"experiment", no_argument, 0, 'x'},
+    {"jarvis", no_argument, 0, 'j'},
     {"distance", required_argument, 0, 'd'},
     {"threads", required_argument, 0, 't'},
     {"verbose", no_argument, 0, 'v'},
@@ -65,16 +69,18 @@ static struct option long_options[] = {
 // Print help menu
 void program_usage(char *prog_path) {
     printf("\nUSAGE: .%s -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...\n\n", strrchr(prog_path, '/'));
-    printf("Program options -------------------------------------------------- ------------------------\n");
+    printf("Program options -------------------------------------------------------------------------------\n");
     printf("-h, --help\t\tPrints this message\n");
     printf("-i, --input\t\tSet input file (FASTA format).\n");
     printf("-o, --output\t\tSet the output file (tsv format).\n");
     printf("-s, --size\t\tCalculates the size and the normalized size of the sequences.\n");
     printf("-g, --gc_content\tCalculates the GC content.\n");
+    printf("-b, --base_percentage\tCalculates the percentage of the bases A, C, T, G and other in the sequence.\n");
     printf("-c, --compression\tCalculates the compressibility of the sequences (Markov models).\n");
     printf("-e, --entropy\t\tCalculates the entropy of the sequences.\n");
     printf("-m, --melting\t\tCalculates the maximum melting temperature.\n");
     printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo3).\n");
+    printf("-j, --jarvis\t\tCalculates the compressibility of the sequences (JARVIS3).\n");
     printf("-d, --distance\t\tSet a sequence to calculate the distance (several sequences can be set).\n");
     printf("-t, --threads\t\tSets the number of threads.\n");
     printf("-v, --verbose\t\tVerbose mode - disables progress bar and prints the results.\n");
@@ -95,7 +101,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt_long(argc, argv, "hi:o:sgcemxd:t:v", long_options, &option_index))  != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:o:sgbcemxjd:t:v", long_options, &option_index))  != -1) {
         
         switch (opt) {
             case 'h': 
@@ -117,6 +123,9 @@ int option_parsing(int argc, char *argv[]) {
             case 'g':
                 calculate_gc_content = 1;
                 break;
+            case 'b':
+                calculate_base_percentage = 1;
+                break;
             case 'c':
                 calculate_compression = 1;
                 break;
@@ -128,6 +137,9 @@ int option_parsing(int argc, char *argv[]) {
                 break;
             case 'x':
                 compression_geco = 1;
+                break;
+            case 'j':
+                compression_jarvis3 = 1;
                 break;
             case 'd':
                 sequences_calc_distance = append(sequences_calc_distance, number_sequences_calc_distance, optarg);
@@ -454,6 +466,9 @@ int write_to_file(char* results){
         if (calculate_gc_content == 1) {
             first_line = concatenate_strings(first_line, "CG_content", 1);
         }
+        if (calculate_base_percentage == 1) {
+            first_line = concatenate_strings(first_line, "Percentage_A\tPercentage_C\tPercentage_T\tPercentage_G\tPercentage_Other", 1);
+        }
         if (sequences_calc_distance != NULL) {
             for (int i = 0; i < number_sequences_calc_distance; i++){
                 
@@ -466,7 +481,7 @@ int write_to_file(char* results){
             }
         }
         if (calculate_compression == 1) {
-            first_line = concatenate_strings(first_line, "Compression_ratio_(Markov_models)", 1);
+            first_line = concatenate_strings(first_line, "Compression_ratio(Markov_models)", 1);
         }
 
         if (calculate_entropy == 1){
@@ -479,7 +494,11 @@ int write_to_file(char* results){
 
 
         if (compression_geco == 1) {
-            first_line = concatenate_strings(first_line, "Compression_ratio_(GeCo3)", 1);
+            first_line = concatenate_strings(first_line, "Compression_ratio(GeCo3)", 1);
+        }
+
+        if (compression_jarvis3 == 1) {
+            first_line = concatenate_strings(first_line, "Compression_ratio(JARVIS3)", 1);
         }
 
         fprintf(file_output, "%s\n", first_line);  // Write the first line to the file
@@ -543,7 +562,7 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
 
     // Build GeCo3 command
     snprintf(command_geco, sizeof(command_geco),
-        "GeCo3 -tm 1:1:0:1:0.9/0:0:0 -tm 7:10:0:1:0/0:0:0 -tm 16:100:1:10:0/3:10:0.9 -lr 0.03 -hs 64 %s > %s 2>&1",
+        "conda run -n genomeclass GeCo3 -tm 1:1:0:1:0.9/0:0:0 -tm 7:10:0:1:0/0:0:0 -tm 16:100:1:10:0/3:10:0.9 -lr 0.03 -hs 64 %s > %s 2>&1",
         filename_uncompressed, logs_file);
 
     // Run the command
@@ -559,6 +578,79 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
     // Clean up files
     remove(filename_compressed);
     remove(logs_file);
+
+    // Return compression ratio
+
+    return (float) compressed_size / initial_size;
+
+}
+
+float calculate_compression_ratio_jarvis (char * sequence_read, int id) {
+
+    char filename_uncompressed[100];
+    char filename_compressed[100];
+    char temp_fasta[100];
+    char logs_file[100];
+    char command_jarvis[512];
+    char command_gto[512];
+    char temp_name[512];
+
+    // Prepare filenames
+    sprintf(filename_uncompressed, "sequence_%d.seq", id);
+    sprintf(temp_fasta, "sequence_%d.fa", id);
+    sprintf(filename_compressed, "sequence_%d.seq.jc", id);
+    sprintf(logs_file, "logs_%d_jarvis.txt", id);
+    sprintf(temp_name, "tmp_%d.fa", id);
+
+	// Create the uncompressed file
+	FILE *fp = fopen(temp_fasta, "w");
+    fprintf(fp, ">a\n%s\n", sequence_read);
+    fclose(fp);
+
+    // Build GTO command
+    snprintf(command_gto, sizeof(command_gto), 
+        "conda run -n genomeclass bash -c 'gto_fasta_rand_extra_chars < %s > tmp_%d.fa' && tail -n +2 tmp_%d.fa | tr -d '\n' > %s",
+        temp_fasta, id, id, filename_uncompressed);
+
+    
+
+    // Run the command
+    int ret = system(command_gto);
+    if (ret != 0) {
+        fprintf(stderr, "GTO command failed with return code %d\n", ret);
+        return -1;
+    }
+    
+
+
+
+
+    // Get size of uncompressed file
+    long long int initial_size = get_size_file(filename_uncompressed);
+
+    // Build JARVIS3 command
+    snprintf(command_jarvis, sizeof(command_jarvis),
+        "conda run -n genomeclass JARVIS3 -v -l 7 %s > %s 2>&1",
+        filename_uncompressed, logs_file);
+
+    // Run the command
+    ret = system(command_jarvis);
+    if (ret != 0) {
+        fprintf(stderr, "JARVIS3 command failed with return code %d\n", ret);
+        return -1;
+    }
+
+    //printf("%s\n", filename_compressed);
+
+    // Get size of uncompressed file
+    long long int compressed_size = get_size_file(filename_compressed);
+
+    // Clean up files
+    remove(filename_compressed);
+    remove(logs_file);
+    remove(temp_fasta);
+    remove(filename_compressed);
+    remove(temp_name);
 
     // Return compression ratio
 
@@ -735,6 +827,20 @@ int worker_task(int index_data_sequence){
         results = concatenate_strings(results, float_to_string(cg_content), 1);
     }
 
+    if (calculate_base_percentage == 1) {
+        float perc_A = (float) data_all_sequences[index_data_sequence].number_a / data_all_sequences[index_data_sequence].number_bases;
+        float perc_C = (float) data_all_sequences[index_data_sequence].number_c / data_all_sequences[index_data_sequence].number_bases;
+        float perc_T = (float) data_all_sequences[index_data_sequence].number_t / data_all_sequences[index_data_sequence].number_bases;
+        float perc_G = (float) data_all_sequences[index_data_sequence].number_g / data_all_sequences[index_data_sequence].number_bases;
+        float perc_Other = (float) data_all_sequences[index_data_sequence].number_other / data_all_sequences[index_data_sequence].number_bases;
+
+        results = concatenate_strings(results, float_to_string(perc_A), 1);
+        results = concatenate_strings(results, float_to_string(perc_C), 1);
+        results = concatenate_strings(results, float_to_string(perc_T), 1);
+        results = concatenate_strings(results, float_to_string(perc_G), 1);
+        results = concatenate_strings(results, float_to_string(perc_Other), 1);
+    }
+
     if (sequences_calc_distance != NULL) {
         
         // Copy results for each sub sequence considered
@@ -768,6 +874,12 @@ int worker_task(int index_data_sequence){
     if (compression_geco == 1) {
         float compression_ratio_geco = calculate_compression_ratio_geco(read_sequence, index_data_sequence);
         results = concatenate_strings(results, float_to_string(compression_ratio_geco), 1);
+
+    }
+
+    if (compression_jarvis3 == 1) {
+        float compression_ratio_jarvis = calculate_compression_ratio_jarvis(read_sequence, index_data_sequence);
+        results = concatenate_strings(results, float_to_string(compression_ratio_jarvis), 1);
 
     }
 
@@ -872,7 +984,7 @@ int main(int argc, char *argv[]) {
         pthread_join(threads[i], NULL);
     }
 
-    printf("All threads have finished.\n");
+    printf("\nAll threads have finished.\n");
 	fclose(file);
 
 }
