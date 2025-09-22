@@ -32,16 +32,18 @@ This will print the following options:
 ```
 USAGE: ./genomeclass -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...
 
-Program options -------------------------------------------------- ------------------------
+Program options -------------------------------------------------------------------------------
 -h, --help              Prints this message
 -i, --input             Set input file (FASTA format).
 -o, --output            Set the output file (tsv format).
 -s, --size              Calculates the size and the normalized size of the sequences.
 -g, --gc_content        Calculates the GC content.
+-b, --base_percentage   Calculates the percentage of the bases A, C, T, G and other in the sequence.
 -c, --compression       Calculates the compressibility of the sequences (Markov models).
 -e, --entropy           Calculates the entropy of the sequences.
 -m, --melting           Calculates the maximum melting temperature.
 -x, --experiment        Calculates the compressibility of the sequences (GeCo3).
+-j, --jarvis            Calculates the compressibility of the sequences (JARVIS3).
 -d, --distance          Set a sequence to calculate the distance (several sequences can be set).
 -t, --threads           Sets the number of threads.
 -v, --verbose           Verbose mode - disables progress bar and prints the results.
