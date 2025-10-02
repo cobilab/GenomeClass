@@ -5,7 +5,7 @@ A tool for the analysis and classification of genome sequences in the FASTA form
 
 Install the necessary dependencies in a Linux system with:
 <pre>
-git clone https://github.com/mirakaya/GenomeClass
+git clone https://github.com/cobilab/GenomeClass
 cd GenomeClass/src/
 ./Installation.sh
 </pre>
@@ -101,7 +101,7 @@ On using this software/method please cite:
 
 ### ISSUES ###
 
-For any issue let us know at [issues link](https://github.com/mirakaya/GenomeClass/issues).
+For any issue let us know at [issues link](https://github.com/cobilab/GenomeClass/issues).
 
 ### LICENSE ###
 
