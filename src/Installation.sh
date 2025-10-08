@@ -8,7 +8,6 @@ conda install -c conda-forge ncbi-datasets-cli -y
 conda install -c bioconda geco3 -y
 conda install -c bioconda jarvis3 -y
 conda install -c bioconda spades -y
-conda install -c cobilab gto -y
 #
 pip install scikit-learn
 pip install nltk

@@ -513,19 +513,68 @@ int write_to_file(char* results){
 }
 
 // Open file and get size
-long long int get_size_file(char* file_name) {
-
+long long int get_size_file(const char *file_name) {
     FILE *fp = fopen(file_name, "rb"); // open in binary mode
-    fseek(fp, 0, SEEK_END);
-    long size = ftell(fp);
+    if (fp == NULL) {
+        fprintf(stderr, "Error: could not open file '%s'\n", file_name);
+        return -1;  // indicate failure
+    }
+
+    // Seek to end and get position
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fprintf(stderr, "Error: fseek failed for file '%s'\n", file_name);
+        fclose(fp);
+        return -1;
+    }
+
+    long long int size = ftell(fp);
+    if (size == -1L) {
+        fprintf(stderr, "Error: ftell failed for file '%s'\n", file_name);
+        fclose(fp);
+        return -1;
+    }
+
     fclose(fp);
-
     return size;
+}
 
+
+
+// Removes all non-ACTG characters by replacing them with random valid bases
+char *remove_non_base_chars(const char *sequence_to_write) {
+    if (sequence_to_write == NULL) return NULL;
+
+    const char valid_bases[] = "ACTG";
+    int len = (int)strlen(sequence_to_write);
+
+    // Allocate space for new sequence (+1 for null terminator)
+    char *cleaned_seq = malloc(len + 1);
+    if (!cleaned_seq) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
+
+    srand((unsigned int) time(NULL)); // seed random generator
+
+    for (int i = 0; i < len; i++) {
+        char c = sequence_to_write[i];
+        if (c == 'A' || c == 'C' || c == 'T' || c == 'G') {
+            cleaned_seq[i] = c;
+        } else if (c == 'a' || c == 'c' || c == 't' || c == 'g') {
+            cleaned_seq[i] = (char) toupper(c);
+        } else {
+            cleaned_seq[i] = valid_bases[rand() % 4];
+        }
+    }
+
+    cleaned_seq[len] = '\0';
+    return cleaned_seq;
 }
 
 // Create a file with a single sequence
-void create_file_single_sequence(char * filename, char * sequence_to_write){
+void create_file_single_sequence_seq(char * filename, char * sequence_to_write){
+
+    remove(filename);
 
 	if (access(filename, F_OK) != 0) { // If the file does not exist, create it
 		// Open file for writing
@@ -536,8 +585,10 @@ void create_file_single_sequence(char * filename, char * sequence_to_write){
 			return -1;
 		}
 
+        char * clean_seq = remove_non_base_chars(sequence_to_write);
+
 		// Write content
-		fprintf(file_seq, "%s\n", sequence_to_write);
+		fprintf(file_seq, "%s", clean_seq);
 		fclose(file_seq);  // Flush and close before checking size
 	}
 }
@@ -553,9 +604,6 @@ float calculate_compression_ratio_geco (char * sequence_read, int id) {
     sprintf(filename_uncompressed, "sequence_%d.seq", id);
     sprintf(filename_compressed, "sequence_%d.seq.co", id);
     sprintf(logs_file, "logs_%d.txt", id);
-
-	// Create the uncompressed file
-	create_file_single_sequence(filename_uncompressed, sequence_read);
 
     // Get size of uncompressed file
     long long int initial_size = get_size_file(filename_uncompressed);
@@ -589,7 +637,6 @@ float calculate_compression_ratio_jarvis (char * sequence_read, int id) {
 
     char filename_uncompressed[100];
     char filename_compressed[100];
-    char temp_fasta[100];
     char logs_file[100];
     char command_jarvis[512];
     char command_gto[512];
@@ -597,33 +644,9 @@ float calculate_compression_ratio_jarvis (char * sequence_read, int id) {
 
     // Prepare filenames
     sprintf(filename_uncompressed, "sequence_%d.seq", id);
-    sprintf(temp_fasta, "sequence_%d.fa", id);
     sprintf(filename_compressed, "sequence_%d.seq.jc", id);
     sprintf(logs_file, "logs_%d_jarvis.txt", id);
     sprintf(temp_name, "tmp_%d.fa", id);
-
-	// Create the uncompressed file
-	FILE *fp = fopen(temp_fasta, "w");
-    fprintf(fp, ">a\n%s\n", sequence_read);
-    fclose(fp);
-
-    // Build GTO command
-    snprintf(command_gto, sizeof(command_gto), 
-        "conda run -n genomeclass bash -c 'gto_fasta_rand_extra_chars < %s > tmp_%d.fa' && tail -n +2 tmp_%d.fa | tr -d '\n' > %s",
-        temp_fasta, id, id, filename_uncompressed);
-
-    
-
-    // Run the command
-    int ret = system(command_gto);
-    if (ret != 0) {
-        fprintf(stderr, "GTO command failed with return code %d\n", ret);
-        return -1;
-    }
-    
-
-
-
 
     // Get size of uncompressed file
     long long int initial_size = get_size_file(filename_uncompressed);
@@ -634,7 +657,7 @@ float calculate_compression_ratio_jarvis (char * sequence_read, int id) {
         filename_uncompressed, logs_file);
 
     // Run the command
-    ret = system(command_jarvis);
+    int ret = system(command_jarvis);
     if (ret != 0) {
         fprintf(stderr, "JARVIS3 command failed with return code %d\n", ret);
         return -1;
@@ -648,8 +671,6 @@ float calculate_compression_ratio_jarvis (char * sequence_read, int id) {
     // Clean up files
     remove(filename_compressed);
     remove(logs_file);
-    remove(temp_fasta);
-    remove(filename_compressed);
     remove(temp_name);
 
     // Return compression ratio
@@ -671,17 +692,13 @@ double calculate_compression_value(char * sequence_read, int id) {
     uint8_t buf[BUFFER_SIZE];
     size_t bytes_read;
 
-	// Prepare filenames
     sprintf(name, "sequence_%d.seq", id);
-
-	create_file_single_sequence(name, sequence_read);
-
 	FILE *IN = Fopen(name, "rb");
 
     ALPHABET *AL = CreateAlphabet();
     LoadAlphabet(AL, IN);
 
-    //fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
+    fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
 
     CModel *CM = CreateCModel(ctx, alphaDen, AL->cardinality);
     CBUF   *symBuf = CreateCBuffer(BUFFER_SIZE, BGUARD);
@@ -717,8 +734,6 @@ double calculate_entropy_value(char * sequence_read, int id) {
 
     // Prepare filenames
     sprintf(name, "sequence_%d.seq", id);
-
-    create_file_single_sequence(name, sequence_read);
 
     FILE *IN = fopen(name, "r");
 
@@ -778,6 +793,7 @@ int worker_task(int index_data_sequence){
 
     char *content_header;
     char *content_sequence;
+    char seq_filename[100];
 
     //Initial and end position of the header
     unsigned long long int start_pos_header = data_all_sequences[index_data_sequence].init_header;
@@ -804,13 +820,19 @@ int worker_task(int index_data_sequence){
 
     // Remove \n characters from sequence
     char *read_sequence = remove_newline_and_tab_characters(aux_sequence);
-    
+
 
     // Allocate the space required to store the results
     char *results = malloc(strlen(read_header) + sizeof(int) + sizeof(float) * (2 + number_sequences_calc_distance) + 100); // 100 more positions are assigned to avoid errors 
     
     // Copy the header to results
     sprintf(results, "%s",read_header);
+
+    // Create the seq file
+    if (calculate_compression == 1 || compression_geco == 1 || compression_jarvis3 == 1){
+        sprintf(seq_filename, "sequence_%d.seq", index_data_sequence);
+	    create_file_single_sequence_seq(seq_filename, read_sequence);
+    }
 
     // Calculate the metrics
     if (calculate_size == 1) {
@@ -885,10 +907,9 @@ int worker_task(int index_data_sequence){
 
 	char filename_to_delete[100];
 
-    // Prepare filename
-    sprintf(filename_to_delete, "sequence_%d.seq", index_data_sequence);
-	if (access(filename_to_delete, F_OK) == 0) {
-		remove(filename_to_delete);
+    // Remove seq file
+	if (access(seq_filename, F_OK) == 0) {
+		remove(seq_filename);
 	}
 
     // Write results to file
