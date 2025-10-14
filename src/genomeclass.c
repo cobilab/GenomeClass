@@ -682,8 +682,8 @@ float calculate_compression_ratio_jarvis (char * sequence_read, int id) {
 double calculate_compression_value(char * sequence_read, int id) {
 
     char name[100];
-    int32_t ctx = 3;
-	uint32_t alphaDen = 1;
+    int32_t ctx = 13;
+	uint32_t alphaDen = 10;
 	int32_t window_size = 2;
     int sym;
     double bits = 0;
