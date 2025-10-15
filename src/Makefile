@@ -7,7 +7,14 @@ LDFLAGS = -pg -lm  # Include -pg here too for proper linking
 
 # Object and header dependencies
 OBJ = genomeclass.o io.o mem.o buffer.o array.o hash.o misc.o pmodels.o alphabet.o context.o
+# Separate utility in Samples/ that can be built as its own executable
+DM_SRC = dataset_modifier.c
+DM_OBJ = dataset_modifier.o
 DEPS = genomeclass.h defs.h io.h rc.h msg.h mem.h buffer.h array.h hash.h misc.h pmodel.h alphabet.h context.h
+
+# Default target: build both executables
+.PHONY: all
+all: genomeclass dataset_modifier
 
 # Rule to compile .c to .o
 %.o: %.c $(DEPS)
@@ -16,6 +23,14 @@ DEPS = genomeclass.h defs.h io.h rc.h msg.h mem.h buffer.h array.h hash.h misc.h
 # Link final binary with profiling support
 genomeclass: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
+
+# Build dataset_modifier executable from Samples/dataset_modifier.c
+dataset_modifier: $(DM_OBJ)
+	$(CC) $(CFLAGS) $(DM_OBJ) -o $@ $(LDFLAGS)
+
+# Rule to compile the dataset modifier source (path-aware)
+$(DM_OBJ): $(DM_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Run the program
 run: genomeclass
@@ -29,4 +44,4 @@ profile: run
 # Clean build artifacts
 .PHONY: clean
 clean:
-	rm -f *.o genomeclass gmon.out profile.txt
+	rm -f *.o genomeclass dataset_modifier gmon.out profile.txt
