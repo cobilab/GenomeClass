@@ -21,7 +21,6 @@ char *path_input_file = NULL;
 char *output_path = "modified_dataset.fasta";
 int length_sequences = 150;
 float noise_perc = 0.1;
-float mutation_perc = 0.0;
 int number_of_threads = 1;
 Seq_data *data_all_sequences = NULL;
 
@@ -40,21 +39,19 @@ static struct option long_options[] = {
     {"output", required_argument, 0, 'o'},
     {"length", required_argument, 0, 'l'},
     {"noise", required_argument, 0, 'n'},
-    {"substitutions", required_argument, 0, 's'},
-    {"threads", required_argument, 0, 't'},
+    {"threads", no_argument, 0, 't'},
     {0, 0, 0, 0}
 };
 
 // Print help menu
 void program_usage(char *prog_path) {
     printf("\nUSAGE: .%s -i <input_fasta> -o <output_fasta> -l <length> -n <noise_percentage> -t <threads>\n\n", strrchr(prog_path, '/'));
-    printf("Program options -------------------------------------------------------------------------------------------\n");
+    printf("Program options -------------------------------------------------------------------------------\n");
     printf("-h, --help\t\tPrints this message\n");
     printf("-i, --input\t\tSet input file (FASTA format).\n");
     printf("-o, --output\t\tSet the output dataset file (FASTA format).\n");
     printf("-l, --length\t\tSet the length of the sequences (default: 150).\n");
     printf("-n, --noise\t\tSet the noise added to the sequences. (default: 0.1).\n");
-    printf("-s, --substitutions\tSet the percentage of substitutions to be applied to the sequences (default: 0.0).\n");
     printf("-t, --threads\t\tSets the number of threads.\n");
     help_menu = 1;
 }
@@ -72,7 +69,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt_long(argc, argv, "hi:o:l:n:s:t:", long_options, &option_index))  != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:o:l:n:t:", long_options, &option_index))  != -1) {
         
         switch (opt) {
             case 'h': 
@@ -104,14 +101,6 @@ int option_parsing(int argc, char *argv[]) {
                     return 1;
                 }
                 break;
-            case 's':
-                mutation_perc = atof(optarg);
-                if (mutation_perc < 0 || mutation_perc > 1) {
-                    printf("The argument of option -m must be a float between 0 and 1.\n");
-                    program_usage(prog_path);
-                    return 1;
-                }
-                break;
             case 't':
                 number_of_threads = atoi(optarg);
                 if (number_of_threads < 1) {
@@ -135,8 +124,7 @@ int option_parsing(int argc, char *argv[]) {
     printf("Input file: %s\n", path_input_file ? path_input_file : "None");
     printf("Output file: %s\n", output_path ? output_path : "None");    
     printf("Lenght of the sequences: %d\n", length_sequences);
-    printf("Noise rate: %f\n", noise_perc);
-    printf("Mutation rate: %f\n", mutation_perc);
+    printf("Noise: %f\n", noise_perc);
     printf("Number of threads: %d\n", number_of_threads);
  
     return 0;
@@ -278,34 +266,44 @@ int read_file_partially(unsigned long long int start_pos, unsigned long long int
 }
 
 
-char *make_changes_sequence(char *sequence_to_mutate){
+char *make_mutations(char *sequence_to_mutate){
+
+    printf("Called\n");
 
     char* aux = malloc(strlen(sequence_to_mutate) +1);
     int number_positions = 0;
+
     int starting_point = (strlen(sequence_to_mutate) - length_sequences);
     int new_start = starting_point * (double)rand() / RAND_MAX;
+    
+    //printf("Starting point %d %d\n", starting_point,new_start);
+
     int aux_len_sequences = length_sequences;
+
 
     for (size_t i = 0; i < strlen(sequence_to_mutate); i++) {
 
         if (i < new_start || i >= new_start + aux_len_sequences){ // Skip the bases outside the desired length
+            //printf("Skipping %zu\n", i);
             continue;
         } else {
        
             if (sequence_to_mutate[i] != '\n' && sequence_to_mutate[i] != '\t'){ // Remove \n and \t from the headers
 
-                if ((char)sequence_to_mutate[i] == 'a' || (char)sequence_to_mutate[i] == 'c' || (char)sequence_to_mutate[i] == 't' || (char)sequence_to_mutate[i] == 'g'|| (char)sequence_to_mutate[i] == 'n'){
-                    sequence_to_mutate[i] = (char) toupper(sequence_to_mutate[i]);
-                }
+                float rand_val = (float)rand() / RAND_MAX;
+                if (rand_val < noise_perc && sequence_to_mutate[i] != 'N' && sequence_to_mutate[i] != 'n' ){ // If the random value is less than the noise percentage, mutate the base
+                    
+                    //char bases[4] = {'A', 'C', 'G', 'T'};
+                    //char new_base = sequence_to_mutate[i];
 
-                if (sequence_to_mutate[i] == 'N' ){
-                    aux[number_positions] = sequence_to_mutate[i];
-                } else if ((float)rand() / RAND_MAX < noise_perc){ // If the random value is less than the noise percentage, mutate the base
-                    aux[number_positions] = 'N';
+                    char new_base = 'N';
+                    //while (new_base == sequence_to_mutate[i]){ // While the new base is the same as the original, keep generating a new one
+                    //    int rand_index = rand() % 4;
+                    //    new_base = bases[rand_index];
+                    //}
 
-                } else if ((float)rand() / RAND_MAX < mutation_perc){ // If the random value is less than the mutation percentage, mutate the base
-                    const char valid_bases[] = "ACTG";
-                    aux[number_positions] = valid_bases[rand() % 4];
+                    aux[number_positions] = new_base;
+
                 } else {
                     aux[number_positions] = sequence_to_mutate[i];
                 }
@@ -318,6 +316,8 @@ char *make_changes_sequence(char *sequence_to_mutate){
     }
     aux[number_positions] = '\0';
 
+    //printf("Length original %zu, length modified %d\n", strlen(sequence_to_mutate), strlen(aux));
+    printf("%s\n", aux);
     return aux;
     
 
@@ -354,7 +354,7 @@ int worker_task(int index_data_sequence){
     pthread_mutex_unlock(&input_file_mutex);
 
     // Remove \n characters from sequence
-    char *out_sequence = make_changes_sequence(aux_sequence);
+    char *out_sequence = make_mutations(aux_sequence);
 
     // Write to output file
     pthread_mutex_lock(&output_file_mutex);
@@ -397,6 +397,7 @@ void* thread_function(void* arg) {
 
         worker_task(index);
         index = get_index_to_work_on();
+        printf("Index %d\n", index);
 
     }
 

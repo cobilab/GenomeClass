@@ -2,8 +2,8 @@
 CC = gcc
 
 # Use -pg for gprof profiling
-CFLAGS = -pg -g -O0 -fno-lto -march=native -funroll-loops -ffast-math -flto -Wall -Wextra
-LDFLAGS = -pg -lm  # Include -pg here too for proper linking
+CFLAGS = -pg -g -O0 -fno-lto -march=native -funroll-loops -ffast-math -flto -Wall -Wextra -pthread
+LDFLAGS = -pg -lm -pthread  # Add -pthread for linking pthread library
 
 # Object and header dependencies
 OBJ = genomeclass.o io.o mem.o buffer.o array.o hash.o misc.o pmodels.o alphabet.o context.o
@@ -45,3 +45,4 @@ profile: run
 .PHONY: clean
 clean:
 	rm -f *.o genomeclass dataset_modifier gmon.out profile.txt
+

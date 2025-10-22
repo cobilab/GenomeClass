@@ -698,7 +698,7 @@ double calculate_compression_value(char * sequence_read, int id) {
     ALPHABET *AL = CreateAlphabet();
     LoadAlphabet(AL, IN);
 
-    fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
+    //fprintf(stderr, "Alphabet cardinality: %u\n", AL->cardinality);
 
     CModel *CM = CreateCModel(ctx, alphaDen, AL->cardinality);
     CBUF   *symBuf = CreateCBuffer(BUFFER_SIZE, BGUARD);

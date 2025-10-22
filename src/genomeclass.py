@@ -42,6 +42,8 @@ def import_files(filename, sep):  # import the csv file
 def drop_columns(data):
 	le = LabelEncoder()
 	X = data.drop(columns=['Sequence_id'])
+	feature_names = X.columns
+	print(feature_names)
 
 	try:
 		y = le.fit_transform(data['Sequence_id'])
@@ -49,7 +51,7 @@ def drop_columns(data):
 		y = None
 		le = None
 
-	return X, y, le
+	return X, y, le, feature_names
 
 
 def print_to_files(info):
@@ -73,7 +75,16 @@ def write_to_file(string_to_write):
 		file.write(string_to_write)
 
 
-def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_test = None):
+def compute_shap(X_train, X_test, model, feature_names):
+	explainer = shap.Explainer(model.predict, X_train)
+	shap_values = explainer(X_test)
+
+	shap.summary_plot(shap_values, X_test, feature_names=feature_names)
+
+	shap.plots.waterfall(shap_values[0])
+
+
+def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_test = None, feature_names=None):
 
 	if is_test == True:
 
@@ -120,6 +131,8 @@ def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_tes
 		)
 
 		write_to_file(string_to_write)
+
+		compute_shap(X_train, X_test, model, feature_names)
 
 	else:
 		print("Saving the " + name + "...")
@@ -302,12 +315,13 @@ if __name__ == '__main__':
 	
 	# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
 	data_tds = data_tds.loc[:, ~data_tds.columns.str.startswith('Prob_sequence_')]
+	data_tds = data_tds.drop(columns=['Sequence_size'])
 	
 	# -> Train the models on the training dataset
 	print(data_tds.shape)
 
 	# Separate features and target first
-	X_tds, Y_tds, le = drop_columns(data_tds)
+	X_tds, Y_tds, le, feature_names = drop_columns(data_tds)
 
 	# Train/test split (stratified)
 	X_train_tds, X_test_tds, y_train_tds, y_test_tds = train_test_split(X_tds, Y_tds, stratify=Y_tds, test_size=0.2, random_state=42)
@@ -317,7 +331,7 @@ if __name__ == '__main__':
 
 	for i in models_considered:
 		# Get performance in the cross validation and train the models on the entire training set
-		fit_and_predict(i[1], i[0], True, X_train_tds, y_train_tds, X_test_tds, y_test_tds)
+		fit_and_predict(i[1], i[0], True, X_train_tds, y_train_tds, X_test_tds, y_test_tds, feature_names)
 
 		# Save the models
 		fit_and_predict(i[1], i[0], False, X_tds, Y_tds)
@@ -348,6 +362,7 @@ if __name__ == '__main__':
 
 	# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
 	data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Prob_sequence_')]
+	data_clf = data_clf.drop(columns=['Sequence_size'])
 
 	# -> Train the models on the training dataset
 	print(data_clf.shape)
