@@ -30,7 +30,7 @@ int calculate_base_percentage = 0;
 Seq_data *data_all_sequences = NULL;
 int number_sequences = 0;
 int number_tasks_assigned = 0;
-long long int number_pos_data_sequence = 100000000;
+long long int number_pos_data_sequence = 10;
 int calculate_compression = 0;
 int compression_geco = 0;
 int compression_jarvis3 = 0;
@@ -207,95 +207,82 @@ int initial_reading() {
     unsigned long long int length_seq = 0;
     unsigned long long int number_bases_seq = 0;
 
-    unsigned long long int number_cg = 0;
-
     // Read each character until the end of file (EOF)
     while ((ch = fgetc(file)) != EOF) {
 
         if ((char)ch == '>') { // If the character is '>', then it is the begining of a new sequence
 
 
-            if (index_data_sequences == -1) { // If it is the first sequence in a file, set index, else write the last position of the previous sequence
-
-                index_data_sequences = 0;
-                
-            } else {
+            if (index_data_sequences != -1) { // If it isn't the first sequence in a file, set index, else write the last position of the previous sequence
 
                 data_all_sequences[index_data_sequences].end_sequence = index_file - 1;
                 data_all_sequences[index_data_sequences].length_sequence = length_seq;
                 data_all_sequences[index_data_sequences].number_bases = number_bases_seq;
-                data_all_sequences[index_data_sequences].cg_content = number_cg;
 
                 if (number_bases_seq > max_number_bases){ // Update longest sequence
                     max_number_bases = number_bases_seq;
                 }
 
-                index_data_sequences ++;
-                length_seq = 0;
+            }
 
-                // Reset count of the characters in the sequence
-                data_all_sequences[index_data_sequences].number_a = 0;
-                data_all_sequences[index_data_sequences].number_c = 0;
-                data_all_sequences[index_data_sequences].number_t = 0;
-                data_all_sequences[index_data_sequences].number_g = 0;
-                data_all_sequences[index_data_sequences].number_other = 0;
-                
-                
+            index_data_sequences ++;
+            
+            length_seq = 0;
+
+            
+
+            if (number_pos_data_sequence <= index_data_sequences) {
+                number_pos_data_sequence += 500;
+                data_all_sequences = realloc(data_all_sequences, number_pos_data_sequence * sizeof(Seq_data));
+
+                // Optionally zero the new part only:
+                memset(&data_all_sequences[index_data_sequences], 0, 500 * sizeof(Seq_data));
             }
 
 
-            if (index_data_sequences >= number_pos_data_sequence){ // If there are more than the pre defined number of sequences, increase the size of the array by 500 positions
-    
-                number_pos_data_sequence = number_pos_data_sequence + 500; // Increase the maximum number
-
-                Seq_data *aux_array = malloc(number_pos_data_sequence * sizeof(Seq_data)); // Allocate the memory accordingly
-                memset(aux_array, 0, number_pos_data_sequence * sizeof(Seq_data)); // Set memory to zeros
-
-                for (int i = 0; i < index_data_sequences + 1; i++) { // Copy data to new array
-                    aux_array[i] = data_all_sequences[i];
-                }
-                
-                free(data_all_sequences); // Free the old array
-                data_all_sequences = aux_array; // Assign the new array to the old name
-                                
-            }
+            printf("%d %d \n\n", index_data_sequences, number_pos_data_sequence);
+            data_all_sequences[index_data_sequences].id = index_data_sequences;
             
             // Update the initial positions and set header
             data_all_sequences[index_data_sequences].init_header = index_file;
+            length_seq = 0;
+            number_bases_seq = 0;
+
             is_header = 1;
         
-        } else if (is_header == 1 && (char)ch == '\n') { // Middle/end of the header condition
+        } else if (is_header == 1 && (char)ch == '\n') { // End of the header condition
 
             is_header = 0;
             data_all_sequences[index_data_sequences].end_header = index_file;
-            length_seq = 0;
-            number_bases_seq = 0;
-            number_cg = 0;
 
-        } else { // Is part of the sequence, increment sequence length and number of bases
+            //char *content_header;
+            //read_file_partially(data_all_sequences[index_data_sequences].init_header, data_all_sequences[index_data_sequences].end_header, &content_header);
+            //printf("%d  %d  %s\n\n", data_all_sequences[index_data_sequences].init_header, data_all_sequences[index_data_sequences].end_header, content_header);
+            
+
+        } else if (is_header == 0) { // Is part of the sequence, increment sequence length and number of bases
             if ((char)ch != '\n') {
-                number_bases_seq ++;
-
-                if ((char)ch == 'c' || (char)ch == 'C' || (char)ch == 'g' || (char)ch == 'G' ) {
-                    number_cg ++;
-                }
+                
 
                 if ((char)ch == 'a' || (char)ch == 'A'){
                     data_all_sequences[index_data_sequences].number_a ++;
 
                 } else if ((char)ch == 'c' || (char)ch == 'C'){
                     data_all_sequences[index_data_sequences].number_c ++;
+                    data_all_sequences[index_data_sequences].cg_content ++;
 
                 } else if ((char)ch == 't' || (char)ch == 'T'){
                     data_all_sequences[index_data_sequences].number_t ++;
 
                 } else if ((char)ch == 'g' || (char)ch == 'G'){
                     data_all_sequences[index_data_sequences].number_g ++;
+                    data_all_sequences[index_data_sequences].cg_content ++;
 
                 } else {
                     data_all_sequences[index_data_sequences].number_other ++;
                 }
 
+                number_bases_seq ++;
 
             }
 
@@ -309,7 +296,6 @@ int initial_reading() {
     data_all_sequences[index_data_sequences].end_sequence = index_file-1; 
     data_all_sequences[index_data_sequences].length_sequence = length_seq;
     data_all_sequences[index_data_sequences].number_bases = number_bases_seq;
-    data_all_sequences[index_data_sequences].cg_content = number_cg;
 
 
     if (number_bases_seq > max_number_bases){
@@ -850,6 +836,7 @@ int worker_task(int index_data_sequence){
     }
 
     if (calculate_base_percentage == 1) {
+        //printf("%d %d %f\n\n", data_all_sequences[index_data_sequence].number_a, data_all_sequences[index_data_sequence].number_bases, data_all_sequences[index_data_sequence].number_a / data_all_sequences[index_data_sequence].number_bases);
         float perc_A = (float) data_all_sequences[index_data_sequence].number_a / data_all_sequences[index_data_sequence].number_bases;
         float perc_C = (float) data_all_sequences[index_data_sequence].number_c / data_all_sequences[index_data_sequence].number_bases;
         float perc_T = (float) data_all_sequences[index_data_sequence].number_t / data_all_sequences[index_data_sequence].number_bases;
@@ -959,8 +946,6 @@ void* thread_function(void* arg) {
 
 int main(int argc, char *argv[]) {
 
-    data_all_sequences = calloc(number_pos_data_sequence, sizeof(Seq_data));
-
     // Parse options and returns error if there's an issue
     int return_code = option_parsing(argc, argv);
 
@@ -984,6 +969,8 @@ int main(int argc, char *argv[]) {
         perror("Error opening file");
         return 1;
     }
+
+    data_all_sequences = calloc(number_pos_data_sequence, sizeof(Seq_data));
 
     // Read the input file and get relevant info on the sequences
     initial_reading();

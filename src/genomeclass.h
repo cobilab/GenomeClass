@@ -4,6 +4,7 @@
 // Structure for storing the beginning and end of a sequence
 
 typedef struct {
+    unsigned long long int id;
     unsigned long long int init_header;
     unsigned long long int end_header;
     unsigned long long int end_sequence;
