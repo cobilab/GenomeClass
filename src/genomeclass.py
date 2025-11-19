@@ -76,13 +76,48 @@ def write_to_file(string_to_write):
 
 
 def compute_shap(X_train, X_test, model, feature_names):
-	explainer = shap.Explainer(model.predict, X_train)
+	explainer = shap.Explainer(model)
 	shap_values = explainer(X_test)
-
-	shap.summary_plot(shap_values, X_test, feature_names=feature_names)
+	shap.initjs()
 
 	shap.plots.waterfall(shap_values[0])
+	shap.force_plot(explainer.expected_value, shap_values[0].values, X_test.iloc[0, :], matplotlib=True)
 
+def pca_feature_analysis(X, n_components):
+
+    # 1. Standardize the features
+    #X_scaled = StandardScaler().fit_transform(X)
+
+    # 2. Apply PCA
+    pca = PCA(n_components=n_components)
+    principal_components = pca.fit_transform(X)
+
+    # 3. Create a DataFrame of principal components
+    pca_df = pd.DataFrame(
+        data=principal_components,
+        columns=[f"PC{i+1}" for i in range(n_components)]
+    )
+
+    # 4. Plot explained variance
+    plt.figure(figsize=(6,4))
+    plt.plot(np.cumsum(pca.explained_variance_ratio_), marker='o')
+    plt.xlabel('Number of Principal Components')
+    plt.ylabel('Cumulative Explained Variance')
+    plt.title('PCA Explained Variance')
+    plt.grid(True)
+    plt.show()
+
+    # 5. Feature loadings (contribution of each feature to each PC)
+    loadings = pd.DataFrame(
+        pca.components_.T,
+        columns=[f"PC{i+1}" for i in range(n_components)],
+        index=X.columns
+    )
+
+    print("\nPCA Explained Variance Ratio:")
+    print(pca.explained_variance_ratio_)
+    print("\nFeature Loadings:")
+    print(loadings)
 
 def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_test = None, feature_names=None):
 
@@ -133,6 +168,7 @@ def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_tes
 		write_to_file(string_to_write)
 
 		compute_shap(X_train, X_test, model, feature_names)
+		pca_feature_analysis(X_train, n_components=10)
 
 	else:
 		print("Saving the " + name + "...")
@@ -276,7 +312,7 @@ if __name__ == '__main__':
 
 	if args.training_fasta is not None and os.path.exists(args.training_fasta) :
 
-		print("Using " + args.training_fasta + " as the training file and " + args.classification_fasta + " as the file to be classified.\n")
+		print("Using " + args.training_fasta + " as the training file.\n")
 		#print("File to be classified: " + args.classification_fasta[0] + "\n")
 		os.system("make clean")
 		os.system("make")

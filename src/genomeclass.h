@@ -80,18 +80,24 @@ void progress_bar(int total_tasks) {
 
 
 
-char * concatenate_strings(char *original_content, char *content_to_append, int add_tab) {
+char *concatenate_strings(char *original, const char *append, int add_tab) {
+    if (!original) original = strdup("");
+    if (!append) append = "";
 
-    char *temp = malloc(strlen(original_content) + strlen(content_to_append) + 10);
-    if (add_tab == 0){
-        sprintf(temp, "%s%s", original_content, content_to_append);
-    } else {
-        sprintf(temp, "%s\t%s", original_content, content_to_append);
-    }
-    
+    size_t needed = strlen(original) + strlen(append) + 10;
+    char *temp = malloc(needed);
+
+    if (add_tab)
+        sprintf(temp, "%s\t%s", original, append);
+    else
+        sprintf(temp, "%s%s", original, append);
+
+    free(original);  // THIS IS CRITICAL
+
     return temp;
-
 }
+
+
 
 char * int_to_string (int value) {
 

@@ -44,8 +44,6 @@ pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-FILE *file;
-
 int option_index = 0;
 
 static struct option long_options[] = {
@@ -167,11 +165,6 @@ int option_parsing(int argc, char *argv[]) {
         remove(output_path);
     }
 
-    int res = check_if_fa_or_fq(path_input_file, number_of_threads);
-
-    if (res != 0) {
-        exit(1);
-    }
 
     // Print execution options
     printf("Number of threads: %d\n", number_of_threads);
@@ -188,6 +181,18 @@ int option_parsing(int argc, char *argv[]) {
     } else {
         printf("Sequences to check distances: None\n");
     }
+
+    if (path_input_file == NULL) {
+        printf("No input file was selected, exiting...\n");
+        return 1;
+    }
+
+    int res = check_if_fa_or_fq(path_input_file, number_of_threads);
+
+    if (res != 0) {
+        exit(1);
+    }
+
  
     return 0;
 }
@@ -206,6 +211,13 @@ int initial_reading() {
 
     unsigned long long int length_seq = 0;
     unsigned long long int number_bases_seq = 0;
+
+    // Open input file
+    FILE *file = fopen(path_input_file, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        return 1;
+    }
 
     // Read each character until the end of file (EOF)
     while ((ch = fgetc(file)) != EOF) {
@@ -306,15 +318,14 @@ int initial_reading() {
 
     number_sequences = index_data_sequences + 1;
     printf("Number of sequences in the file - %d\n", number_sequences);   
-    
+    fclose(file);
     return 0;
 
 }
 
-// Gets parts of a file given the start and end positions#include <stdio.h>
-#include <stdlib.h>
-
+// Gets parts of a file given the start and end positions
 int read_file_partially(unsigned long long int start_pos, unsigned long long int end_pos, char **content) {
+    
     if (start_pos < 0 || end_pos < start_pos) {
         fprintf(stderr, "Invalid positions %d, %d\n", start_pos, end_pos);
         return 1;
@@ -327,6 +338,13 @@ int read_file_partially(unsigned long long int start_pos, unsigned long long int
     char *buffer = malloc(bytes_to_read + 1);
     if (!buffer) {
         perror("Memory allocation failed");
+        return 1;
+    }
+
+    // Open input file
+    FILE *file = fopen(path_input_file, "r");
+    if (file == NULL) {
+        perror("Error opening file");
         return 1;
     }
 
@@ -356,6 +374,7 @@ int read_file_partially(unsigned long long int start_pos, unsigned long long int
     // Optionally shrink buffer if fewer bytes read (could realloc or just keep)
     // *content = realloc(buffer, total_read + 1); // optional, only if memory is a concern
     *content = buffer;
+    fclose(file);
 
     return 0;
 }
@@ -929,18 +948,314 @@ int get_index_to_work_on () {
 
 }
 
-// Thread function
-void* thread_function(void* arg) {
-    int index = get_index_to_work_on();
+char* make_results (int count_sequences, int start_pos_sequence, int current_pos, int number_a, int number_c, int number_t, int number_g, int number_other, char *header, int max_header, int pos_header) {
 
-    while (index != -1) { // While there are tasks to be done, perform a task and ask for a new one
 
-        worker_task(index);
-        index = get_index_to_work_on();
+    // Allocate the space required to store the results
+    char *results = strdup("");
+
+    int number_bases = number_a + number_c + number_g + number_t + number_other;
+    float perc_A = (float) number_a / number_bases;
+    float perc_C = (float) number_c / number_bases;
+    float perc_T = (float) number_t / number_bases;
+    float perc_G = (float) number_g / number_bases;
+    float perc_Other = (float) number_other / number_bases;
+
+    results = concatenate_strings(results, header, 0);    
+    
+    if (calculate_size == 1) {
+        results = concatenate_strings(results, int_to_string(number_bases), 1);
+        float normalized_size = (float) number_bases / max_number_bases;
+
+        results = concatenate_strings(results, float_to_string(normalized_size), 1);
+    }
+
+    if (calculate_gc_content == 1){
+        float cg_content = (float) (number_c + number_g ) / number_bases;
+        results = concatenate_strings(results, float_to_string(cg_content), 1);
+    }
+
+    if (calculate_base_percentage == 1) {
+        results = concatenate_strings(results, float_to_string(perc_A), 1);
+        results = concatenate_strings(results, float_to_string(perc_C), 1);
+        results = concatenate_strings(results, float_to_string(perc_T), 1);
+        results = concatenate_strings(results, float_to_string(perc_G), 1);
+        results = concatenate_strings(results, float_to_string(perc_Other), 1);
+    }
+
+
+    char seq_filename[100];                
+    char *content_sequence;
+
+    read_file_partially(start_pos_sequence, current_pos - 1, &content_sequence);
+    char* aux_sequence = content_sequence;
+
+    // Remove \n characters from sequence
+    char *read_sequence = remove_newline_and_tab_characters(aux_sequence);
+
+    // Create the seq file
+    if (calculate_compression == 1 || compression_geco == 1 || compression_jarvis3 == 1){
+        sprintf(seq_filename, "sequence_%d.seq", count_sequences);
+        create_file_single_sequence_seq(seq_filename, read_sequence);
+    }
+
+    if (sequences_calc_distance != NULL) {
+
+        // Copy results for each sub sequence considered
+        for (int i = 0; i < number_sequences_calc_distance; i++){
+
+            Dist_Prob_sequence sequence_data = get_sequence_distance(read_sequence, sequences_calc_distance[i], number_bases);
+            float avg_sequence_distance = sequence_data.avg_distance;
+            float sequence_probability = sequence_data.prob_sequence;
+            
+            results = concatenate_strings(results, float_to_string(avg_sequence_distance), 1);
+            results = concatenate_strings(results, float_to_string(sequence_probability), 1);
+        }
+        
+    }
+
+    if (calculate_compression == 1) {
+        double nc_results = calculate_compression_value(read_sequence, count_sequences);
+        results = concatenate_strings(results, float_to_string(nc_results), 1);
+    }
+
+    if (calculate_entropy == 1) {
+        double entropy_val = calculate_entropy_value(read_sequence, count_sequences);
+        results = concatenate_strings(results, float_to_string(entropy_val), 1);
+    }
+
+    if (calculate_melting == 1) {
+        double melting_temp = calculate_melting_temperature(number_a, number_t, number_c, number_g);
+        results = concatenate_strings(results, float_to_string(melting_temp), 1);
+    }
+    
+    if (compression_geco == 1) {
+        float compression_ratio_geco = calculate_compression_ratio_geco(read_sequence, count_sequences);
+        results = concatenate_strings(results, float_to_string(compression_ratio_geco), 1);
 
     }
 
+    if (compression_jarvis3 == 1) {
+        float compression_ratio_jarvis = calculate_compression_ratio_jarvis(read_sequence, count_sequences);
+        results = concatenate_strings(results, float_to_string(compression_ratio_jarvis), 1);
+
+    }
+
+    return results;
+}
+
+//Process the FASTA file and write output to TSV file
+int process_file (int thread_id) {
+
+    int ch;
+    long int count_sequences = 0;
+    int processing = 0;
+    int is_header = 0;
+
+    int number_a = 0;
+    int number_c = 0;
+    int number_t = 0;
+    int number_g = 0;
+    int number_other = 0;
+
+    int max_header = 500;
+    char header[max_header];
+    int pos_header = 0;
+
+    int start_pos_sequence = 0;
+
+    int current_pos = 0;
+
+    // Open input file
+    FILE *file = fopen(path_input_file, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        return 1;
+    }
+
+
+
+    // Read each character until the end of file (EOF)
+    while ((ch = fgetc(file)) != EOF) {
+
+        if ((char)ch == '>') { // If the character is '>', then it is the begining of a new sequence
+            
+            if (processing == 1) { // Was processing info; dump onto file
+
+                char* results = make_results(count_sequences, start_pos_sequence, current_pos, number_a, number_c, number_t, number_g, number_other, header, max_header, pos_header);
+                
+                // Write results to file
+                pthread_mutex_lock(&output_file_mutex);
+                write_to_file(results);
+                
+                //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
+                pthread_mutex_unlock(&output_file_mutex);
+
+                // Update progress bar
+                if (verbose == 0){ // Update the progress bar
+                    progress_bar(number_sequences);
+                    
+                    //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
+                } else { // Print the results
+                    printf("%s\n", results);
+                }
+
+                memset(header, 0, sizeof(header));
+                header[0] = (char)ch;  
+                pos_header = 1; 
+            }
+            
+            
+            count_sequences ++;
+            is_header = 1;
+
+            // Reset variables for new sequence
+            number_a = 0;
+            number_c = 0;
+            number_t = 0;
+            number_g = 0;
+            number_other = 0;
+
+
+               
+
+            
+
+            if (count_sequences % number_of_threads == thread_id - 1) { //Process the content
+                processing = 1;
+                printf("\nThread %d is starting to process sequence %ld, res %d\n", thread_id, count_sequences, count_sequences % number_of_threads);
+
+            } else {
+                processing = 0;
+                printf("\nRejected %d to process sequence %ld, %d, res %d\n", thread_id, count_sequences, number_of_threads, count_sequences % number_of_threads);
+            }
+
+            
+
+        } else if (processing == 1) { // Either middle of a header or a part of the sequence
+
+            if (is_header == 1) { // Then its a part of the header, copy content
+                if ((char)ch == '\n') { // End of the header
+                    is_header = 0;
+                    start_pos_sequence = current_pos + 1;
+                } else { // Copy content
+
+                    if (pos_header < max_header) {
+                        header[pos_header] = (char)ch;  
+                        pos_header++;                  
+                    }
+                    
+                }
+
+            } else if ((char)ch != '\n') { // Is part of a sequence and is not a \n
+
+                // Count chars
+                if ((char)ch == 'a' || (char)ch == 'A'){
+                    number_a ++;
+
+                } else if ((char)ch == 'c' || (char)ch == 'C'){
+                    number_c ++;
+
+                } else if ((char)ch == 't' || (char)ch == 'T'){
+                    number_t ++;
+
+                } else if ((char)ch == 'g' || (char)ch == 'G'){
+                    number_g ++;
+
+                } else {
+                    number_other ++;
+                }
+
+
+            }
+
+
+        }
+
+        current_pos ++;
+
+
+    }
+
+    // Process the last sequence in the file
+    if (processing == 1) { // Was processing info; dump onto file
+        char* results = make_results(count_sequences, start_pos_sequence, current_pos, number_a, number_c, number_t, number_g, number_other, header, max_header, pos_header);
+
+        // Write results to file
+        pthread_mutex_lock(&output_file_mutex);
+        write_to_file(results);
+        
+        printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
+        pthread_mutex_unlock(&output_file_mutex);
+
+        // Update progress bar
+        if (verbose == 0){ // Update the progress bar
+            progress_bar(number_sequences);
+            
+            //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
+        } else { // Print the results
+            printf("%s\n", results);
+        }
+    }
+
+
+    printf("\nThread %d has finished processing.\n", thread_id);
+
+    fclose(file);
+
+    return 0;
+}
+
+// Thread function
+void* thread_function(void* arg) {
+    
+    int thread_number = *(int*)arg + 1;
+
+    //printf("I am thread  %d\n", thread_number);
+
+    process_file(thread_number);
+
     return NULL;
+}
+
+int calculate_number_sequences () {
+
+	// Open input file
+    FILE *file = fopen(path_input_file, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        return 1;
+    }
+
+    int ch;
+    int is_header = 0;
+    int count_bases = 0;
+
+    while ((ch = fgetc(file)) != EOF) {
+        if ((char)ch == '>') {
+            number_sequences ++;
+            is_header = 1;
+            count_bases = 0;
+
+            if (count_bases > max_number_bases){
+                max_number_bases = count_bases;
+            }
+
+        } else if ((char)ch == '\n' && is_header == 1) {
+            is_header = 0;
+        } else if (is_header == 0 && (char)ch != '\n') {
+            count_bases ++;
+        }
+
+    }
+
+    if (count_bases  > max_number_bases){
+        max_number_bases = count_bases;
+    }
+
+    printf("Max number bases %d\n\n", max_number_bases);
+
+    fclose(file);
 }
 
 
@@ -951,7 +1266,7 @@ int main(int argc, char *argv[]) {
 
     // If there is an error in the option parsing, exit
     if (return_code == 1) {
-        printf("Error - Execution unsuccessful.\n");
+        //printf("Error - Execution unsuccessful.\n");
         exit(1);  // Exit with error status
     } else if (help_menu == 1) {
         exit(0);
@@ -963,17 +1278,7 @@ int main(int argc, char *argv[]) {
         exit(1);  // Exit with error status
     }
 
-	// Open input file
-    file = fopen(path_input_file, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return 1;
-    }
-
-    data_all_sequences = calloc(number_pos_data_sequence, sizeof(Seq_data));
-
-    // Read the input file and get relevant info on the sequences
-    initial_reading();
+    calculate_number_sequences();
 
     pthread_t threads[number_of_threads];  // Array to hold thread IDs
     int thread_ids[number_of_threads];     // Array to hold thread arguments    
@@ -993,6 +1298,5 @@ int main(int argc, char *argv[]) {
     }
 
     printf("\nAll threads have finished.\n");
-	fclose(file);
 
 }
