@@ -197,132 +197,6 @@ int option_parsing(int argc, char *argv[]) {
     return 0;
 }
 
-// Initial passage over the input file, retrieves information regarding the sequences (single thread)
-int initial_reading() {
-
-    printf("\nStarting the analysis of the input file.\n");
-
-    int ch;
-
-    unsigned long long int index_file = 0;
-    unsigned long long int index_data_sequences = -1;
-
-    int is_header = 0;
-
-    unsigned long long int length_seq = 0;
-    unsigned long long int number_bases_seq = 0;
-
-    // Open input file
-    FILE *file = fopen(path_input_file, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return 1;
-    }
-
-    // Read each character until the end of file (EOF)
-    while ((ch = fgetc(file)) != EOF) {
-
-        if ((char)ch == '>') { // If the character is '>', then it is the begining of a new sequence
-
-
-            if (index_data_sequences != -1) { // If it isn't the first sequence in a file, set index, else write the last position of the previous sequence
-
-                data_all_sequences[index_data_sequences].end_sequence = index_file - 1;
-                data_all_sequences[index_data_sequences].length_sequence = length_seq;
-                data_all_sequences[index_data_sequences].number_bases = number_bases_seq;
-
-                if (number_bases_seq > max_number_bases){ // Update longest sequence
-                    max_number_bases = number_bases_seq;
-                }
-
-            }
-
-            index_data_sequences ++;
-            
-            length_seq = 0;
-
-            
-
-            if (number_pos_data_sequence <= index_data_sequences) {
-                number_pos_data_sequence += 500;
-                data_all_sequences = realloc(data_all_sequences, number_pos_data_sequence * sizeof(Seq_data));
-
-                // Optionally zero the new part only:
-                memset(&data_all_sequences[index_data_sequences], 0, 500 * sizeof(Seq_data));
-            }
-
-
-            printf("%d %d \n\n", index_data_sequences, number_pos_data_sequence);
-            data_all_sequences[index_data_sequences].id = index_data_sequences;
-            
-            // Update the initial positions and set header
-            data_all_sequences[index_data_sequences].init_header = index_file;
-            length_seq = 0;
-            number_bases_seq = 0;
-
-            is_header = 1;
-        
-        } else if (is_header == 1 && (char)ch == '\n') { // End of the header condition
-
-            is_header = 0;
-            data_all_sequences[index_data_sequences].end_header = index_file;
-
-            //char *content_header;
-            //read_file_partially(data_all_sequences[index_data_sequences].init_header, data_all_sequences[index_data_sequences].end_header, &content_header);
-            //printf("%d  %d  %s\n\n", data_all_sequences[index_data_sequences].init_header, data_all_sequences[index_data_sequences].end_header, content_header);
-            
-
-        } else if (is_header == 0) { // Is part of the sequence, increment sequence length and number of bases
-            if ((char)ch != '\n') {
-                
-
-                if ((char)ch == 'a' || (char)ch == 'A'){
-                    data_all_sequences[index_data_sequences].number_a ++;
-
-                } else if ((char)ch == 'c' || (char)ch == 'C'){
-                    data_all_sequences[index_data_sequences].number_c ++;
-                    data_all_sequences[index_data_sequences].cg_content ++;
-
-                } else if ((char)ch == 't' || (char)ch == 'T'){
-                    data_all_sequences[index_data_sequences].number_t ++;
-
-                } else if ((char)ch == 'g' || (char)ch == 'G'){
-                    data_all_sequences[index_data_sequences].number_g ++;
-                    data_all_sequences[index_data_sequences].cg_content ++;
-
-                } else {
-                    data_all_sequences[index_data_sequences].number_other ++;
-                }
-
-                number_bases_seq ++;
-
-            }
-
-            length_seq ++;
-        }
-
-        index_file ++;
-    }
-
-    // Update the information of the last sequence
-    data_all_sequences[index_data_sequences].end_sequence = index_file-1; 
-    data_all_sequences[index_data_sequences].length_sequence = length_seq;
-    data_all_sequences[index_data_sequences].number_bases = number_bases_seq;
-
-
-    if (number_bases_seq > max_number_bases){
-        max_number_bases = number_bases_seq;
-    }
-
-    printf("Max number bases %d\n\n", max_number_bases);
-
-    number_sequences = index_data_sequences + 1;
-    printf("Number of sequences in the file - %d\n", number_sequences);   
-    fclose(file);
-    return 0;
-
-}
-
 // Gets parts of a file given the start and end positions
 int read_file_partially(unsigned long long int start_pos, unsigned long long int end_pos, char **content) {
     
@@ -792,162 +666,6 @@ double calculate_melting_temperature (int number_A, int number_T, int number_C, 
 }
 
 
-
-// Tasks to be done by each thread
-int worker_task(int index_data_sequence){
-
-    char *content_header;
-    char *content_sequence;
-    char seq_filename[100];
-
-    //Initial and end position of the header
-    unsigned long long int start_pos_header = data_all_sequences[index_data_sequence].init_header;
-    unsigned long long int end_pos_header = data_all_sequences[index_data_sequence].end_header;
-
-    // Get sequence header
-    pthread_mutex_lock(&input_file_mutex);
-    read_file_partially(start_pos_header, end_pos_header, &content_header);
-    char* aux_header = content_header;
-    pthread_mutex_unlock(&input_file_mutex);
-
-    // Remove the \n and \t from the headers
-    char *read_header = remove_newline_and_tab_characters(aux_header);
-
-    //Initial and end position of the sequence   
-    unsigned long long int start_pos_sequence = end_pos_header + 1;  // Start position in the file
-    unsigned long long int end_pos_sequence = data_all_sequences[index_data_sequence].end_sequence;   // End position in the file
-
-    // Get sequence
-    pthread_mutex_lock(&input_file_mutex);
-    read_file_partially(start_pos_sequence, end_pos_sequence, &content_sequence);
-    char* aux_sequence = content_sequence;
-    pthread_mutex_unlock(&input_file_mutex);
-
-    // Remove \n characters from sequence
-    char *read_sequence = remove_newline_and_tab_characters(aux_sequence);
-
-
-    // Allocate the space required to store the results
-    char *results = malloc(strlen(read_header) + sizeof(int) + sizeof(float) * (2 + number_sequences_calc_distance) + 100); // 100 more positions are assigned to avoid errors 
-    
-    // Copy the header to results
-    sprintf(results, "%s",read_header);
-
-    // Create the seq file
-    if (calculate_compression == 1 || compression_geco == 1 || compression_jarvis3 == 1){
-        sprintf(seq_filename, "sequence_%d.seq", index_data_sequence);
-	    create_file_single_sequence_seq(seq_filename, read_sequence);
-    }
-
-    // Calculate the metrics
-    if (calculate_size == 1) {
-        int size_sequence = data_all_sequences[index_data_sequence].number_bases;
-        float size_sequence_normalized = (float) data_all_sequences[index_data_sequence].number_bases / max_number_bases;
-
-        // Copy results
-        results = concatenate_strings(results, int_to_string(size_sequence), 1);
-        results = concatenate_strings(results, float_to_string(size_sequence_normalized), 1);
-    }
-
-    if (calculate_gc_content == 1){
-        float cg_content = (float) data_all_sequences[index_data_sequence].cg_content / data_all_sequences[index_data_sequence].number_bases;
-        results = concatenate_strings(results, float_to_string(cg_content), 1);
-    }
-
-    if (calculate_base_percentage == 1) {
-        //printf("%d %d %f\n\n", data_all_sequences[index_data_sequence].number_a, data_all_sequences[index_data_sequence].number_bases, data_all_sequences[index_data_sequence].number_a / data_all_sequences[index_data_sequence].number_bases);
-        float perc_A = (float) data_all_sequences[index_data_sequence].number_a / data_all_sequences[index_data_sequence].number_bases;
-        float perc_C = (float) data_all_sequences[index_data_sequence].number_c / data_all_sequences[index_data_sequence].number_bases;
-        float perc_T = (float) data_all_sequences[index_data_sequence].number_t / data_all_sequences[index_data_sequence].number_bases;
-        float perc_G = (float) data_all_sequences[index_data_sequence].number_g / data_all_sequences[index_data_sequence].number_bases;
-        float perc_Other = (float) data_all_sequences[index_data_sequence].number_other / data_all_sequences[index_data_sequence].number_bases;
-
-        results = concatenate_strings(results, float_to_string(perc_A), 1);
-        results = concatenate_strings(results, float_to_string(perc_C), 1);
-        results = concatenate_strings(results, float_to_string(perc_T), 1);
-        results = concatenate_strings(results, float_to_string(perc_G), 1);
-        results = concatenate_strings(results, float_to_string(perc_Other), 1);
-    }
-
-    if (sequences_calc_distance != NULL) {
-        
-        // Copy results for each sub sequence considered
-        for (int i = 0; i < number_sequences_calc_distance; i++){
-
-            Dist_Prob_sequence sequence_data = get_sequence_distance(read_sequence, sequences_calc_distance[i], data_all_sequences[index_data_sequence].number_bases);
-            float avg_sequence_distance = sequence_data.avg_distance;
-            float sequence_probability = sequence_data.prob_sequence;
-            
-            results = concatenate_strings(results, float_to_string(avg_sequence_distance), 1);
-            results = concatenate_strings(results, float_to_string(sequence_probability), 1);
-        }
-        
-    }
-
-    if (calculate_compression == 1) {
-        double nc_results = calculate_compression_value(read_sequence, index_data_sequence);
-        results = concatenate_strings(results, float_to_string(nc_results), 1);
-    }
-
-    if (calculate_entropy == 1) {
-        double entropy_val = calculate_entropy_value(read_sequence, index_data_sequence);
-        results = concatenate_strings(results, float_to_string(entropy_val), 1);
-    }
-
-    if (calculate_melting == 1) {
-        double melting_temp = calculate_melting_temperature(data_all_sequences[index_data_sequence].number_a, data_all_sequences[index_data_sequence].number_t, data_all_sequences[index_data_sequence].number_c, data_all_sequences[index_data_sequence].number_g);
-        results = concatenate_strings(results, float_to_string(melting_temp), 1);
-    }
-    
-    if (compression_geco == 1) {
-        float compression_ratio_geco = calculate_compression_ratio_geco(read_sequence, index_data_sequence);
-        results = concatenate_strings(results, float_to_string(compression_ratio_geco), 1);
-
-    }
-
-    if (compression_jarvis3 == 1) {
-        float compression_ratio_jarvis = calculate_compression_ratio_jarvis(read_sequence, index_data_sequence);
-        results = concatenate_strings(results, float_to_string(compression_ratio_jarvis), 1);
-
-    }
-
-	char filename_to_delete[100];
-
-    // Remove seq file
-	if (access(seq_filename, F_OK) == 0) {
-		remove(seq_filename);
-	}
-
-    // Write results to file
-    pthread_mutex_lock(&output_file_mutex);
-    write_to_file(results);
-    pthread_mutex_unlock(&output_file_mutex);
-    
-    
-    if (verbose == 0){ // Update the progress bar
-        progress_bar(number_sequences);
-    } else { // Print the results
-        printf("%s\n", results);
-    }
-    return 0;
-
-}
-
-// Returns the index of the first sequence that isn't being worked on
-int get_index_to_work_on () {
-
-    if (number_tasks_assigned < number_sequences){
-        pthread_mutex_lock(&task_mutex);
-        int index = number_tasks_assigned;
-        number_tasks_assigned ++;
-        pthread_mutex_unlock(&task_mutex);
-        return index;
-    } else {
-        return -1;
-    }
-
-}
-
 char* make_results (int count_sequences, int start_pos_sequence, int current_pos, int number_a, int number_c, int number_t, int number_g, int number_other, char *header, int max_header, int pos_header) {
 
 
@@ -1099,10 +817,7 @@ int process_file (int thread_id) {
                 } else { // Print the results
                     printf("%s\n", results);
                 }
-
-                memset(header, 0, sizeof(header));
-                header[0] = (char)ch;  
-                pos_header = 1; 
+                pos_header = 0;
             }
             
             
@@ -1123,6 +838,9 @@ int process_file (int thread_id) {
 
             if (count_sequences % number_of_threads == thread_id - 1) { //Process the content
                 processing = 1;
+                memset(header, 0, max_header);
+                header[0] = '>';
+                pos_header ++;
                 printf("\nThread %d is starting to process sequence %ld, res %d\n", thread_id, count_sequences, count_sequences % number_of_threads);
 
             } else {
@@ -1210,8 +928,6 @@ int process_file (int thread_id) {
 void* thread_function(void* arg) {
     
     int thread_number = *(int*)arg + 1;
-
-    //printf("I am thread  %d\n", thread_number);
 
     process_file(thread_number);
 
