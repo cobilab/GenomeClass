@@ -832,10 +832,11 @@ int process_file (int thread_id) {
 
             if (count_sequences % number_of_threads == thread_id - 1) { //Process the content
                 processing = 1;
+                pos_header = 0;
                 memset(header, 0, max_header);
                 header[0] = '>';
                 pos_header ++;
-                //printf("\nThread %d is starting to process sequence %ld, res %d\n", thread_id, count_sequences, (int)(count_sequences % number_of_threads));
+                header[pos_header] = '\0';
 
             } else {
                 processing = 0;
@@ -855,7 +856,8 @@ int process_file (int thread_id) {
 
                     if (pos_header < max_header) {
                         header[pos_header] = (char)ch;  
-                        pos_header++;                  
+                        pos_header++;      
+                        header[pos_header] = '\0';                   
                     }
                     
                 }
@@ -929,46 +931,7 @@ void* thread_function(void* arg) {
     return NULL;
 }
 
-int calculate_number_sequences () {
 
-	// Open input file
-    FILE *file = fopen(path_input_file, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return 1;
-    }
-
-    int ch;
-    int is_header = 0;
-    int count_bases = 0;
-
-    while ((ch = fgetc(file)) != EOF) {
-        if ((char)ch == '>') {
-            number_sequences ++;
-            is_header = 1;
-            count_bases = 0;
-
-            if (count_bases > max_number_bases){
-                max_number_bases = count_bases;
-            }
-
-        } else if ((char)ch == '\n' && is_header == 1) {
-            is_header = 0;
-        } else if (is_header == 0 && (char)ch != '\n') {
-            count_bases ++;
-        }
-
-    }
-
-    if (count_bases  > max_number_bases){
-        max_number_bases = count_bases;
-    }
-
-    printf("Max number bases %d\n\n", max_number_bases);
-
-    fclose(file);
-    return 0;
-}
 
 
 int main(int argc, char *argv[]) {
@@ -990,7 +953,10 @@ int main(int argc, char *argv[]) {
         exit(1);  // Exit with error status
     }
 
-    calculate_number_sequences();
+    Info_file info_file = calculate_number_sequences(path_input_file);
+
+    number_sequences = info_file.number_seqs;
+    max_number_bases = info_file.max_size_seq;
 
     pthread_t threads[number_of_threads];  // Array to hold thread IDs
     int thread_ids[number_of_threads];     // Array to hold thread arguments    

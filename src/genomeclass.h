@@ -23,6 +23,13 @@ typedef struct {
     float prob_sequence;
 } Dist_Prob_sequence;
 
+
+typedef struct {
+    int max_size_seq;
+    int number_seqs;
+} Info_file;
+
+
 int tasks_done = 0;
 pthread_mutex_t tasks_done_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -187,6 +194,52 @@ int check_if_fa_or_fq (char *file_name, int threads) {
         return 1;
     }
 
+}
+
+Info_file calculate_number_sequences (char* path_input_file) {
+
+	// Open input file
+    FILE *file = fopen(path_input_file, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        return;
+    }
+
+    int ch;
+    int is_header = 0;
+    int count_bases = 0;
+    Info_file info_file;
+    memset(&info_file, 0, sizeof(Info_file));
+
+    while ((ch = fgetc(file)) != EOF) {
+        if ((char)ch == '>') {
+            info_file.number_seqs ++;
+            is_header = 1;
+
+            if (count_bases > info_file.max_size_seq){
+                info_file.max_size_seq = count_bases;
+            }
+
+            count_bases = 0;
+
+        } else if ((char)ch == '\n' && is_header == 1) {
+            is_header = 0;
+        } else if (is_header == 0 && (char)ch != '\n') {
+            count_bases ++;
+        }
+
+    }
+
+    if (count_bases > info_file.max_size_seq){
+        info_file.max_size_seq = count_bases;
+    }
+
+    printf("Max number bases %d\n\n", info_file.max_size_seq);
+
+    fclose(file);
+
+
+    return info_file;
 }
 
 
