@@ -5,6 +5,7 @@ import os
 import warnings
 
 import shap
+import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import pandas as pd
 import seaborn as sns
@@ -16,6 +17,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from xgboost import XGBClassifier
+
 
 
 
@@ -75,13 +77,34 @@ def write_to_file(string_to_write):
 		file.write(string_to_write)
 
 
-def compute_shap(X_train, X_test, model, feature_names):
-	explainer = shap.Explainer(model)
-	shap_values = explainer(X_test)
-	shap.initjs()
+def compute_shap(X_train, X_test, model, feature_names=None):
+    # Create explainer
+	explainer = shap.TreeExplainer(model)
+	shap_values = explainer(X_train)  # Explanation object
 
-	shap.plots.waterfall(shap_values[0])
-	shap.force_plot(explainer.expected_value, shap_values[0].values, X_test.iloc[0, :], matplotlib=True)
+	# Extract raw values: shape (n_samples, n_features, n_classes)
+	shap_vals = shap_values.values
+
+	# Compute mean absolute SHAP values across samples and classes
+	mean_abs_shap = np.mean(np.abs(shap_vals), axis=(0, 2))  # shape = (n_features,)
+
+	# Create a sorted feature importance table
+	feature_importance = pd.DataFrame({
+		"feature": X_train.columns,
+		"mean_abs_shap": mean_abs_shap
+	}).sort_values(by="mean_abs_shap", ascending=False)
+
+	print(feature_importance)
+
+	plt.figure(figsize=(10, 6))
+	plt.barh(feature_importance['feature'], feature_importance['mean_abs_shap'])
+	plt.gca().invert_yaxis()
+	plt.xlabel("Mean |SHAP value|")
+	plt.title("Global Feature Importance")
+	plt.show()
+
+
+
 
 def pca_feature_analysis(X, n_components):
 
@@ -168,7 +191,7 @@ def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_tes
 		write_to_file(string_to_write)
 
 		compute_shap(X_train, X_test, model, feature_names)
-		pca_feature_analysis(X_train, n_components=10)
+		pca_feature_analysis(X_train, n_components=15)
 
 	else:
 		print("Saving the " + name + "...")
@@ -231,21 +254,37 @@ def additional_removals (df):
 
 
 def PCA_feature_analysis():
-	X_scaled = StandardScaler().fit_transform(X)
+	scaler = StandardScaler()
+	X_scaled = scaler.fit_transform(X_train)
 
-	# Run PCA
-	pca = PCA(n_components=5)
+	# Keep all components
+	pca = PCA(n_components=X_scaled.shape[1])
 	pca.fit(X_scaled)
 
-	# Loadings: how much each original feature contributes to each PC
-	loadings = pd.DataFrame(
-		pca.components_.T,
-		columns=[f'PC{i + 1}' for i in range(pca.n_components_)],
-		index=X.columns
-	)
+	# Loadings: shape = (n_components, n_features)
+	loadings = pca.components_
 
-	# Optional: plot loading magnitudes for PC1
-	print(loadings['PC1'].abs().sort_values(ascending=False).head(10))
+	# Explained variance ratio
+	explained_var = pca.explained_variance_ratio_
+
+	# Compute overall feature importance
+	# weighted sum of absolute loadings
+	feature_importance = np.sum(np.abs(loadings) * explained_var[:, np.newaxis], axis=0)
+
+	# Create a DataFrame
+	feature_importance_df = pd.DataFrame({
+		"feature": X_train.columns,
+		"importance": feature_importance
+	}).sort_values(by="importance", ascending=False)
+
+	print(feature_importance_df)
+
+	plt.figure(figsize=(10, 6))
+	plt.barh(feature_importance_df['feature'], feature_importance_df['importance'])
+	plt.gca().invert_yaxis()
+	plt.xlabel("PCA-based Feature Importance")
+	plt.title("Global Feature Importance via PCA")
+	plt.show()
 
 
 def calculate_cv_scores(model, name, X_train, y_train):
@@ -308,7 +347,7 @@ if __name__ == '__main__':
 	if args.analysis_options != None:
 		options = args.analysis_options + permutations_added
 	else:
-		options = "-s -g -c -e -m -t 7" + permutations_added
+		options = "-s -g -e -m -t 3" + permutations_added
 
 	if args.training_fasta is not None and os.path.exists(args.training_fasta) :
 

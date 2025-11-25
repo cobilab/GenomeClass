@@ -60,7 +60,7 @@ void progress_bar(int total_tasks) {
     int width = get_screen_width();
 
     // Reserve space for " 100% (xxxx/xxxx)" ≈ 20 chars
-    int reserved = 20;
+    int reserved = 24;
     int bar_width = width - reserved;
     if (bar_width < 10) bar_width = 10; // fallback if terminal is too small
 
