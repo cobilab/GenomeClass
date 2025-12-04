@@ -2,33 +2,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <pthread.h>
-
-typedef struct {
-    unsigned long long int id;
-    unsigned long long int init_header;
-    unsigned long long int end_header;
-    unsigned long long int end_sequence;
-    unsigned long long int length_sequence;
-    unsigned long long int number_bases;
-    unsigned long long int cg_content;
-    unsigned long long int number_a;
-    unsigned long long int number_c;
-    unsigned long long int number_g;
-    unsigned long long int number_t;
-    unsigned long long int number_other;
-} Seq_data;
-
-typedef struct {
-    float avg_distance;
-    float prob_sequence;
-} Dist_Prob_sequence;
-
-
-typedef struct {
-    int max_size_seq;
-    int number_seqs;
-} Info_file;
-
+#include <stdio.h>
+#include <auxgenomeclass.h>
 
 int tasks_done = 0;
 pthread_mutex_t tasks_done_mutex = PTHREAD_MUTEX_INITIALIZER;

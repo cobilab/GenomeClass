@@ -9,7 +9,7 @@
 #include <ctype.h>
 #include <pthread.h>
 
-#include "genomeclass.h"
+#include "auxgenomeclass.h"
 
 /* Minimal globals and declarations so this file can be built as a
     standalone executable (mirrors similar globals in genomeclass.c). */
@@ -287,7 +287,7 @@ char *make_changes_sequence(char *sequence_to_mutate){
     char* aux = malloc(strlen(sequence_to_mutate) +1);
     int number_positions = 0;
 
-    if (strlen(sequence_to_mutate) > length_sequences) {
+    if (strlen(sequence_to_mutate) >= length_sequences) {
         int starting_point = (strlen(sequence_to_mutate) - length_sequences);
         int new_start = starting_point * (double)rand() / RAND_MAX;
         int aux_len_sequences = length_sequences;
@@ -368,6 +368,31 @@ int worker_task(int index_data_sequence){
 
 }
 
+int process_sequence(char* seq, char* header) {
+
+    char *out_sequence = make_changes_sequence(seq);
+
+    if (out_sequence != NULL) {
+
+        // Write to output file
+        pthread_mutex_lock(&output_file_mutex);
+
+        FILE *output_file = fopen(output_path, "a");
+        if (output_file == NULL) {
+            perror("Error opening output file");
+            pthread_mutex_unlock(&output_file_mutex);
+            return 1;
+        }
+        fprintf(output_file, "%s\n", header);
+        fprintf(output_file, "%s\n", out_sequence);
+        fclose(output_file);
+        pthread_mutex_unlock(&output_file_mutex);
+
+        
+    }
+    progress_bar(number_sequences);
+}
+
 
 
 //Process the FASTA file and write output to TSV file
@@ -404,29 +429,10 @@ int process_file (int thread_id) {
             
             if (processing == 1) { // Was processing info; dump onto file
 
-                char *out_sequence = make_changes_sequence(seq);
-
-                if (out_sequence != NULL) {
-
-                    // Write to output file
-                    pthread_mutex_lock(&output_file_mutex);
-
-                    FILE *output_file = fopen(output_path, "a");
-                    if (output_file == NULL) {
-                        perror("Error opening output file");
-                        pthread_mutex_unlock(&output_file_mutex);
-                        return 1;
-                    }
-                    fprintf(output_file, "%s\n", header);
-                    fprintf(output_file, "%s\n", out_sequence);
-                    fclose(output_file);
-                    pthread_mutex_unlock(&output_file_mutex);
-
-                    memset(seq, 0, max_number_bases);
-                    pos_seq = 0;
-                }
-                progress_bar(number_sequences);
-
+                process_sequence(seq, header);
+                
+                memset(seq, 0, max_number_bases);
+                pos_seq = 0;
             }
             
             count_sequences ++;
@@ -484,7 +490,7 @@ int process_file (int thread_id) {
 
     // Process the last sequence in the file
     if (processing == 1) { // Was processing info; dump onto file
-        //TODO
+        process_sequence(seq, header);
     }
 
 
@@ -511,6 +517,7 @@ void* thread_function(void* arg) {
 
 int main(int argc, char *argv[]) {
 
+    srand(time(NULL));  // Seed the random number generator
 
     data_all_sequences = calloc(number_pos_data_sequence, sizeof(Seq_data));
 

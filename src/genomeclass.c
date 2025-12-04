@@ -12,11 +12,12 @@
 #include <unistd.h>
 #include <ctype.h>
 
-#include "genomeclass.h"
+#include "auxgenomeclass.h"
 #include "alphabet.h"
 #include "buffer.h"
 #include "context.h"
 #include "math.h"
+#include "stats.h"
 
 
 // Global variables
@@ -40,10 +41,9 @@ int help_menu = 0;
 int verbose = 0;
 int calculate_entropy = 0;
 int calculate_melting = 0;
+int calculate_additional_metrics = 0;
 
-pthread_mutex_t input_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int option_index = 0;
 
@@ -60,6 +60,7 @@ static struct option long_options[] = {
     {"experiment", no_argument, 0, 'x'},
     {"jarvis", no_argument, 0, 'j'},
     {"distance", required_argument, 0, 'd'},
+    {"additional_metrics", no_argument, 0, 'a'},
     {"threads", required_argument, 0, 't'},
     {"verbose", no_argument, 0, 'v'},
     {0, 0, 0, 0}
@@ -68,21 +69,22 @@ static struct option long_options[] = {
 // Print help menu
 void program_usage(char *prog_path) {
     printf("\nUSAGE: .%s -t <number_of_threads> -i <input_fasta> -s -g -d <sequence_1> [sequence_n]...\n\n", strrchr(prog_path, '/'));
-    printf("Program options -------------------------------------------------------------------------------\n");
-    printf("-h, --help\t\tPrints this message\n");
-    printf("-i, --input\t\tSet input file (FASTA format).\n");
-    printf("-o, --output\t\tSet the output file (tsv format).\n");
-    printf("-s, --size\t\tCalculates the size and the normalized size of the sequences.\n");
-    printf("-g, --gc_content\tCalculates the GC content.\n");
-    printf("-b, --base_percentage\tCalculates the percentage of the bases A, C, T, G and other in the sequence.\n");
-    printf("-c, --compression\tCalculates the compressibility of the sequences (Markov models).\n");
-    printf("-e, --entropy\t\tCalculates the entropy of the sequences.\n");
-    printf("-m, --melting\t\tCalculates the maximum melting temperature.\n");
-    printf("-x, --experiment\tCalculates the compressibility of the sequences (GeCo3).\n");
-    printf("-j, --jarvis\t\tCalculates the compressibility of the sequences (JARVIS3).\n");
-    printf("-d, --distance\t\tSet a sequence to calculate the distance (several sequences can be set).\n");
-    printf("-t, --threads\t\tSets the number of threads.\n");
-    printf("-v, --verbose\t\tVerbose mode - disables progress bar and prints the results.\n");
+    printf("Program options --------------------------------------------------------------------------------------------\n");
+    printf("-h, --help\t\t\tPrints this message\n");
+    printf("-i, --input\t\t\tSet input file (FASTA format).\n");
+    printf("-o, --output\t\t\tSet the output file (tsv format).\n");
+    printf("-s, --size\t\t\tCalculates the size and the normalized size of the sequences.\n");
+    printf("-g, --gc_content\t\tCalculates the GC content.\n");
+    printf("-b, --base_percentage\t\tCalculates the percentage of the bases A, C, T, G and other in the sequence.\n");
+    printf("-c, --compression\t\tCalculates the compressibility of the sequences (Markov models).\n");
+    printf("-e, --entropy\t\t\tCalculates the entropy of the sequences.\n");
+    printf("-m, --melting\t\t\tCalculates the maximum melting temperature.\n");
+    printf("-x, --experiment\t\tCalculates the compressibility of the sequences (GeCo3).\n");
+    printf("-j, --jarvis\t\t\tCalculates the compressibility of the sequences (JARVIS3).\n");
+    printf("-d, --distance\t\t\tSet a sequence to calculate the distance (several sequences can be set).\n");
+    printf("-a, --additional_metrics\tCalculates additional metrics.\n");
+    printf("-t, --threads\t\t\tSets the number of threads.\n");
+    printf("-v, --verbose\t\t\tVerbose mode - disables progress bar and prints the results.\n");
 
     help_menu = 1;
 }
@@ -100,7 +102,7 @@ int option_parsing(int argc, char *argv[]) {
     } 
 
     // Input options
-    while ((opt = getopt_long(argc, argv, "hi:o:sgbcemxjd:t:v", long_options, &option_index))  != -1) {
+    while ((opt = getopt_long(argc, argv, "hi:o:sgbcemxjd:at:v", long_options, &option_index))  != -1) {
         
         switch (opt) {
             case 'h': 
@@ -143,6 +145,9 @@ int option_parsing(int argc, char *argv[]) {
             case 'd':
                 sequences_calc_distance = append(sequences_calc_distance, number_sequences_calc_distance, optarg);
                 number_sequences_calc_distance ++;
+                break;
+            case 'a':
+                calculate_additional_metrics = 1;
                 break;
             case 't':
                 number_of_threads = atoi(optarg);
@@ -378,6 +383,10 @@ int write_to_file(char* results){
 
         if (compression_jarvis3 == 1) {
             first_line = concatenate_strings(first_line, "Compression_ratio(JARVIS3)", 1);
+        }
+
+        if (calculate_additional_metrics == 1) {
+            first_line = concatenate_strings(first_line, "Distinct_symbols\tRelative_diversity\tMost_common_symbol_freq_rel\tMax_min_freq_difference_rel\tLongest_run_length\tAverage_run_length\tChange_rate\tEqual_adjacent_pairs_ratio\tDistinct_bigrams\tBigram_diversity\tMost_frequent_bigram_1\tFreq_bigram_1\tMost_frequent_bigram_2\tFreq_bigram_2\tMost_frequent_bigram_3\tFreq_bigram_3", 1);
         }
 
         fprintf(file_output, "%s\n", first_line);  // Write the first line to the file
@@ -705,7 +714,7 @@ char* make_results (int count_sequences, int start_pos_sequence, int current_pos
     char *read_sequence = remove_newline_and_tab_characters(aux_sequence);
 
     // Create the seq file
-    if (calculate_compression == 1 || compression_geco == 1 || compression_jarvis3 == 1 || calculate_entropy == 1){
+    if (calculate_compression == 1 || compression_geco == 1 || compression_jarvis3 == 1 || calculate_entropy == 1 || calculate_additional_metrics == 1) {
         sprintf(seq_filename, "sequence_%d.seq", count_sequences);
         create_file_single_sequence_seq(seq_filename, read_sequence);
     }
@@ -751,6 +760,12 @@ char* make_results (int count_sequences, int start_pos_sequence, int current_pos
         results = concatenate_strings(results, float_to_string(compression_ratio_jarvis), 1);
 
     }
+
+    if (calculate_additional_metrics == 1) {
+        char * stats_results = stats_mode(seq_filename, 8);
+        results = concatenate_strings(results, stats_results, 0);
+    }
+
     remove(seq_filename);
 
     return results;
@@ -824,11 +839,6 @@ int process_file (int thread_id) {
             number_t = 0;
             number_g = 0;
             number_other = 0;
-
-
-               
-
-            
 
             if (count_sequences % number_of_threads == thread_id - 1) { //Process the content
                 processing = 1;

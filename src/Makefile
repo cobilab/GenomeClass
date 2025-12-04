@@ -2,15 +2,18 @@
 CC = gcc
 
 # Use -pg for gprof profiling
-CFLAGS = -pg -g -O0 -fno-lto -march=native -funroll-loops -ffast-math -flto -Wall -Wextra -pthread
+CFLAGS = -pg -g -O0 -fno-lto -march=native -funroll-loops -ffast-math -flto -Wall -Wextra -pthread -I.
+
 LDFLAGS = -pg -lm -pthread  # Add -pthread for linking pthread library
 
 # Object and header dependencies
-OBJ = genomeclass.o io.o mem.o buffer.o array.o hash.o misc.o pmodels.o alphabet.o context.o
-# Separate utility in Samples/ that can be built as its own executable
+OBJ = genomeclass.o io.o mem.o buffer.o array.o hash.o misc.o pmodels.o alphabet.o context.o stats.o auxgenomeclass.o
+
+# Separate utility in that can be built as its own executable
 DM_SRC = dataset_modifier.c
 DM_OBJ = dataset_modifier.o
-DEPS = genomeclass.h defs.h io.h rc.h msg.h mem.h buffer.h array.h hash.h misc.h pmodel.h alphabet.h context.h
+
+DEPS = genomeclass.h defs.h io.h rc.h msg.h mem.h buffer.h array.h hash.h misc.h pmodel.h alphabet.h context.h stats.c stats.h auxgenomeclass.c auxgenomeclass.h
 
 # Default target: build both executables
 .PHONY: all
@@ -25,8 +28,8 @@ genomeclass: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
 
 # Build dataset_modifier executable from Samples/dataset_modifier.c
-dataset_modifier: $(DM_OBJ)
-	$(CC) $(CFLAGS) $(DM_OBJ) -o $@ $(LDFLAGS)
+dataset_modifier: $(DM_OBJ) auxgenomeclass.o io.o mem.o buffer.o array.o hash.o misc.o pmodels.o alphabet.o context.o stats.o
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Rule to compile the dataset modifier source (path-aware)
 $(DM_OBJ): $(DM_SRC)
@@ -45,4 +48,3 @@ profile: run
 .PHONY: clean
 clean:
 	rm -f *.o genomeclass dataset_modifier gmon.out profile.txt
-
