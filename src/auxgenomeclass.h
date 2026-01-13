@@ -31,6 +31,11 @@ typedef struct {
     int number_seqs;
 } Info_file;
 
+typedef struct {
+    int thread_id;
+    FILE *file_output;
+} thread_arg_t;
+
 char** append(char* arr[], int n, char* ele);
 
 int get_screen_width();
