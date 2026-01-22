@@ -571,25 +571,26 @@ static void compute_bigram_stats_16(
  * Usage for the stats subcommand
  * ------------------------------------------------------------------*/
 
-static void print_stats_usage(const char *progname)
-  {
-  printf("Usage: %s stats [-b 8|16] <filename>\n", progname);
-  printf("  -b 8|16     Symbol width (8-bit or 16-bit)\n");
-  }
-
-/* --------------------------------------------------------------------
- * Entry point used from ox.c
- * ------------------------------------------------------------------*/
-
 char * stats_mode(char *filename, int bits)
-  {
-  int opt;
+{
+  uint64_t *counts = calloc(MAX_SYMBOLS, sizeof(uint64_t));
+  if(!counts)
+    {
+    fprintf(stderr, "Memory allocation failed (counts)\n");
+    exit(1);
+    }
 
-  static uint64_t counts[MAX_SYMBOLS];
-  static uint64_t bigram_counts8[BIGRAM_SIZE_8];
-
-  memset(counts,        0, sizeof(counts));
-  memset(bigram_counts8, 0, sizeof(bigram_counts8));
+  uint64_t *bigram_counts8 = NULL;
+  if(bits == 8)
+    {
+    bigram_counts8 = calloc(BIGRAM_SIZE_8, sizeof(uint64_t));
+    if(!bigram_counts8)
+      {
+      fprintf(stderr, "Memory allocation failed (bigram_counts8)\n");
+      free(counts);
+      exit(1);
+      }
+    }
 
   uint64_t N, run_count, max_run_len, num_changes;
   uint64_t equal_pairs, bigram_total;
@@ -619,7 +620,7 @@ char * stats_mode(char *filename, int bits)
                            bigram_total,
                            &bigrams);
     }
-  else  /* bits == 16 */
+  else
     {
     BigramHash16 bh;
     bigram_hash_init(&bh, 1024);
@@ -649,35 +650,20 @@ char * stats_mode(char *filename, int bits)
     bigram_hash_free(&bh);
     }
 
-  //printf("File for stats: %s\n", filename);
-  //printf("Considering Symbol width %d bits\n\n", bits);
-
   char *results = strdup("");
-
-  //Distinct_symbols\tRelative_diversity\tMost_common_symbol_freq_rel\tMax_min_freq_difference_rel\t
 
   results = concatenate_strings(results, int_to_string((unsigned long long)basic.V), 1);
   results = concatenate_strings(results, float_to_string(basic.diversity_rel), 1);
   results = concatenate_strings(results, float_to_string(basic.freq_rel_max), 1);
 
-
   if(basic.min_freq_nonzero > 0)
-    {
     results = concatenate_strings(results, float_to_string(basic.diff_max_min_rel), 1);
-    }
   else
-    {
     results = concatenate_strings(results, float_to_string(-1.0), 1);
-    }
 
-
-  //Longest_run_length\tAverage_run_length\tChange_rate\t
   results = concatenate_strings(results, int_to_string((unsigned long long)runs.max_run_len), 1);
   results = concatenate_strings(results, float_to_string(runs.avg_run_len), 1);
   results = concatenate_strings(results, float_to_string(runs.change_rate), 1);
-
-
-  //Equal_adjacent_pairs_ratio\tDistinct_bigrams\tBigram_diversity\tMost_frequent_bigram_1\tFreq_bigram_1\tMost_frequent_bigram_2\tFreq_bigram_2\tMost_frequent_bigram_3\tFreq_bigram_3
 
   results = concatenate_strings(results, float_to_string(bigrams.equal_pair_ratio), 1);
   results = concatenate_strings(results, int_to_string((unsigned long long)bigrams.B), 1);
@@ -691,20 +677,19 @@ char * stats_mode(char *filename, int bits)
     uint32_t key = bigrams.top_key[k];
     uint32_t s1  = (key >> 16) & 0xFFFFu;
     uint32_t s2  = key & 0xFFFFu;
-    double rel   = 0.0;
-    if(bigrams.bigram_total > 0)
-      rel = (double)bigrams.top_count[k] /
-            (double)bigrams.bigram_total;
 
     char buffer[100];
     sprintf(buffer, "(%u, %u)", s1, s2);
 
     results = concatenate_strings(results, buffer, 1);
-    results = concatenate_strings(results, int_to_string((unsigned long long)bigrams.top_count[k]), 1);
+    results = concatenate_strings(results,
+                                  int_to_string((unsigned long long)bigrams.top_count[k]),
+                                  1);
     }
-  
+
+  free(counts);
+  if(bigram_counts8)
+    free(bigram_counts8);
 
   return results;
-  }
-
-
+}

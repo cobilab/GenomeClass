@@ -321,75 +321,84 @@ Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequen
 }
 
 
-// Write the results to an already opened output file (.tsv format)
-int write_to_file(FILE *file_output, char* results) {
+// Write the results to the output file (.tsv format)
+int write_to_file(char* results){
 
-    if (!file_output) return 1;
-
-    pthread_mutex_lock(&output_file_mutex);
-    fprintf(file_output, "%s\n", results);  // Write the results to the file
-    fflush(file_output); // Ensure it's written immediately
-    pthread_mutex_unlock(&output_file_mutex);
-
-    return 0;
-}
-
-// Write header line to output file
-int write_header(FILE *file_output) {
-
-    if (!file_output) return 1;
-
+    FILE *file_output;
     char column_name[150]; 
-    char *first_line = strdup("Sequence_id");  
 
-    if (calculate_size == 1) {
-        first_line = concatenate_strings(first_line, "Sequence_size", 1);
-        first_line = concatenate_strings(first_line, "Normalized_sequence_size", 1);
-    }
-    if (calculate_gc_content == 1) {
-        first_line = concatenate_strings(first_line, "CG_content", 1);
-    }
-    if (calculate_base_percentage == 1) {
-        first_line = concatenate_strings(first_line, "Percentage_A\tPercentage_C\tPercentage_T\tPercentage_G\tPercentage_Other", 1);
-    }
-    if (sequences_calc_distance != NULL) {
-        for (int i = 0; i < number_sequences_calc_distance; i++){
-            sprintf(column_name, "Avg_distance_%s", sequences_calc_distance[i]);
-            first_line = concatenate_strings(first_line, column_name, 1);
-            sprintf(column_name, "Prob_sequence_%s", sequences_calc_distance[i]);
-            first_line = concatenate_strings(first_line, column_name, 1);
+    if (access(output_path, F_OK) == 0) { // If the output file exists, append the results
+        file_output = fopen(output_path, "a");
+        if (!file_output) {
+            perror("Failed to open the output file\n");
+            return 1;
         }
-    }
-    if (calculate_compression == 1) {
-        first_line = concatenate_strings(first_line, "Compression_ratio(Markov_models)", 1);
-    }
-    if (calculate_entropy == 1){
-        first_line = concatenate_strings(first_line, "Shannon_entropy", 1);
-    }
-    if (calculate_melting == 1){
-        first_line = concatenate_strings(first_line, "Maximum_melting_temperature", 1);
-    }
-    if (compression_geco == 1) {
-        first_line = concatenate_strings(first_line, "Compression_ratio(GeCo3)", 1);
-    }
-    if (compression_jarvis3 == 1) {
-        first_line = concatenate_strings(first_line, "Compression_ratio(JARVIS3)", 1);
-    }
-    if (calculate_additional_metrics == 1) {
-        first_line = concatenate_strings(first_line, 
-            "Distinct_symbols\tRelative_diversity\tMost_common_symbol_freq_rel\tMax_min_freq_difference_rel\t"
-            "Longest_run_length\tAverage_run_length\tChange_rate\tEqual_adjacent_pairs_ratio\t"
-            "Distinct_bigrams\tBigram_diversity\tMost_frequent_bigram_1\tFreq_bigram_1\t"
-            "Most_frequent_bigram_2\tFreq_bigram_2\tMost_frequent_bigram_3\tFreq_bigram_3", 1);
+    } else { // else, create the file and write the header
+        file_output = fopen(output_path, "w"); 
+        if (!file_output) {
+            perror("Failed to open file\n");
+            return 1;
+        }
+
+        char *first_line = malloc(sizeof(sequences_calc_distance) + 1000); // TODO - this may give some problems in the future depending on the number of sequences to seek distance   
+        
+        sprintf(first_line, "%s", "Sequence_id");  
+        if (calculate_size == 1) {
+            first_line = concatenate_strings(first_line, "Sequence_size", 1);
+            first_line = concatenate_strings(first_line, "Normalized_sequence_size", 1);
+        }
+        if (calculate_gc_content == 1) {
+            first_line = concatenate_strings(first_line, "CG_content", 1);
+        }
+        if (calculate_base_percentage == 1) {
+            first_line = concatenate_strings(first_line, "Percentage_A\tPercentage_C\tPercentage_T\tPercentage_G\tPercentage_Other", 1);
+        }
+        if (sequences_calc_distance != NULL) {
+            for (int i = 0; i < number_sequences_calc_distance; i++){
+                
+                sprintf(column_name, "Avg_distance_%s", sequences_calc_distance[i]);
+                first_line = concatenate_strings(first_line, column_name, 1);
+
+                sprintf(column_name, "Prob_sequence_%s", sequences_calc_distance[i]);
+                first_line = concatenate_strings(first_line, column_name, 1);
+
+            }
+        }
+        if (calculate_compression == 1) {
+            first_line = concatenate_strings(first_line, "Compression_ratio(Markov_models)", 1);
+        }
+
+        if (calculate_entropy == 1){
+            first_line = concatenate_strings(first_line, "Shannon_entropy", 1);
+        }
+
+        if (calculate_melting == 1){
+            first_line = concatenate_strings(first_line, "Maximum_melting_temperature", 1);
+        }
+
+
+        if (compression_geco == 1) {
+            first_line = concatenate_strings(first_line, "Compression_ratio(GeCo3)", 1);
+        }
+
+        if (compression_jarvis3 == 1) {
+            first_line = concatenate_strings(first_line, "Compression_ratio(JARVIS3)", 1);
+        }
+
+        if (calculate_additional_metrics == 1) {
+            first_line = concatenate_strings(first_line, "Distinct_symbols\tRelative_diversity\tMost_common_symbol_freq_rel\tMax_min_freq_difference_rel\tLongest_run_length\tAverage_run_length\tChange_rate\tEqual_adjacent_pairs_ratio\tDistinct_bigrams\tBigram_diversity\tMost_frequent_bigram_1\tFreq_bigram_1\tMost_frequent_bigram_2\tFreq_bigram_2\tMost_frequent_bigram_3\tFreq_bigram_3", 1);
+        }
+
+        fprintf(file_output, "%s\n", first_line);  // Write the first line to the file
+           
     }
 
-    fprintf(file_output, "%s\n", first_line);
-    fflush(file_output);
-    free(first_line);
+    fprintf(file_output, "%s\n", results);  // Write the results to the file
+    fclose(file_output); // Close the file
 
     return 0;
-}
 
+}
 
 // Open file and get size
 long long int get_size_file(const char *file_name) {
@@ -763,7 +772,7 @@ char* make_results (int count_sequences, unsigned long long int start_pos_sequen
 }
 
 //Process the FASTA file and write output to TSV file
-int process_file (int thread_id, FILE *file_output) {
+int process_file (int thread_id) {
 
     int ch;
     long int count_sequences = 0;
@@ -803,7 +812,11 @@ int process_file (int thread_id, FILE *file_output) {
                 char* results = make_results(count_sequences, start_pos_sequence, current_pos, number_a, number_c, number_t, number_g, number_other, header);
                 
                 // Write results to file
-                write_to_file(file_output, results);
+                pthread_mutex_lock(&output_file_mutex);
+                write_to_file(results);
+                
+                //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
+                pthread_mutex_unlock(&output_file_mutex);
 
                 // Update progress bar
                 if (verbose == 0){ // Update the progress bar
@@ -894,7 +907,11 @@ int process_file (int thread_id, FILE *file_output) {
         char* results = make_results(count_sequences, start_pos_sequence, current_pos, number_a, number_c, number_t, number_g, number_other, header);
 
         // Write results to file
-        write_to_file(file_output, results);
+        pthread_mutex_lock(&output_file_mutex);
+        write_to_file(results);
+        
+        //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
+        pthread_mutex_unlock(&output_file_mutex);
 
         // Update progress bar
         if (verbose == 0){ // Update the progress bar
@@ -916,10 +933,14 @@ int process_file (int thread_id, FILE *file_output) {
 
 // Thread function
 void* thread_function(void* arg) {
-    thread_arg_t *targ = (thread_arg_t*)arg;
-    process_file(targ->thread_id, targ->file_output);
+    
+    int thread_number = *(int*)arg + 1;
+
+    process_file(thread_number);
+
     return NULL;
 }
+
 
 
 
@@ -948,23 +969,12 @@ int main(int argc, char *argv[]) {
     max_number_bases = info_file.max_size_seq;
 
     pthread_t threads[number_of_threads];  // Array to hold thread IDs
-    int thread_ids[number_of_threads];     // Array to hold thread arguments 
-    
-    thread_arg_t thread_args[number_of_threads];
-    
-    FILE *file_output = fopen(output_path, "w");
-    if (!file_output) {
-        perror("Failed to open output file");
-        exit(1);
-    }
-
-    write_header(file_output);
+    int thread_ids[number_of_threads];     // Array to hold thread arguments    
     
     // Initialize threads
     for (int i = 0; i < number_of_threads; i++) {
-        thread_args[i].thread_id = i;
-        thread_args[i].file_output = file_output;
-        if (pthread_create(&threads[i], NULL, thread_function, (void*)&thread_args[i]) != 0) {
+        thread_ids[i] = i;  // Assign unique ID to each thread
+        if (pthread_create(&threads[i], NULL, thread_function, (void*)&thread_ids[i]) != 0) { //assign a function to the threads
             perror("Failed to create thread");
             exit(1);
         }
@@ -974,8 +984,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < number_of_threads; i++) {
         pthread_join(threads[i], NULL);
     }
-
-    fclose(file_output);
 
     printf("\nAll threads have finished.\n");
 
