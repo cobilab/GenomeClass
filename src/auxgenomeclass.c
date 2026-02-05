@@ -5,8 +5,11 @@
 #include <stdio.h>
 #include <auxgenomeclass.h>
 
+#define READ_BUF_SIZE (1 << 20)
+
 int tasks_done = 0;
 pthread_mutex_t tasks_done_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t progress_bar_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 char** append(char* arr[], int n, char* ele) {
@@ -26,27 +29,30 @@ char** append(char* arr[], int n, char* ele) {
 }
 
 
-
 int get_screen_width() {
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
     return w.ws_col;  // Use character width, not pixels
 }
 
+
 void progress_bar(int total_tasks) {
+    
     pthread_mutex_lock(&tasks_done_mutex);
     tasks_done++;
+    pthread_mutex_unlock(&tasks_done_mutex);
 
     float percentage = (float)tasks_done / total_tasks;
     int percentage_int = (int)(percentage * 100);
     int width = get_screen_width();
 
-    // Reserve space for " 100% (xxxx/xxxx)" ≈ 20 chars
-    int reserved = 24;
+    int reserved = 28;
     int bar_width = width - reserved;
     if (bar_width < 10) bar_width = 10; // fallback if terminal is too small
 
     int pos = (int)(bar_width * percentage);
+
+    pthread_mutex_lock(&progress_bar_mutex);
 
     printf("\r[");
     for (int i = 0; i < bar_width; i++) {
@@ -57,9 +63,8 @@ void progress_bar(int total_tasks) {
     printf("] %3d%% (%d/%d)", percentage_int, tasks_done, total_tasks);
     fflush(stdout);
 
-    pthread_mutex_unlock(&tasks_done_mutex);
+    pthread_mutex_unlock(&progress_bar_mutex);
 }
-
 
 
 char *concatenate_strings(char *original, const char *app, int add_tab) {
@@ -80,7 +85,6 @@ char *concatenate_strings(char *original, const char *app, int add_tab) {
 }
 
 
-
 char * int_to_string (int value) {
 
     char *temp = malloc(10);
@@ -89,6 +93,7 @@ char * int_to_string (int value) {
 
 }
 
+
 char * float_to_string (float value) {
 
     char *temp = malloc(32);
@@ -96,6 +101,7 @@ char * float_to_string (float value) {
     return temp;
 
 }
+
 
 char *remove_newline_and_tab_characters(char *text_to_clean){
 
@@ -114,8 +120,8 @@ char *remove_newline_and_tab_characters(char *text_to_clean){
 
 }
 
-int check_if_fa_or_fq (char *file_name, int threads) {
 
+int check_if_fa_or_fq (char *file_name, int threads) {
 
     char command_spades[512];
     char new_path[100];
@@ -171,50 +177,58 @@ int check_if_fa_or_fq (char *file_name, int threads) {
 
 }
 
-Info_file calculate_number_sequences (char* path_input_file) {
 
-	// Open input file
-    FILE *file = fopen(path_input_file, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return;
-    }
+Info_file calculate_number_sequences(char *path_input_file) {
 
-    int ch;
-    int is_header = 0;
-    int count_bases = 0;
     Info_file info_file;
-    memset(&info_file, 0, sizeof(Info_file));
+    memset(&info_file, 0, sizeof(info_file));
 
-    while ((ch = fgetc(file)) != EOF) {
-        if ((char)ch == '>') {
-            info_file.number_seqs ++;
-            is_header = 1;
-
-            if (count_bases > info_file.max_size_seq){
-                info_file.max_size_seq = count_bases;
-            }
-
-            count_bases = 0;
-
-        } else if ((char)ch == '\n' && is_header == 1) {
-            is_header = 0;
-        } else if (is_header == 0 && (char)ch != '\n') {
-            count_bases ++;
-        }
-
+    FILE *file = fopen(path_input_file, "r");
+    if (!file) {
+        perror("Error opening file");
+        return info_file;
     }
 
-    if (count_bases > info_file.max_size_seq){
+    char buffer[READ_BUF_SIZE];
+    size_t bytes_read;
+
+    int is_header = 0;
+    size_t count_bases = 0;
+
+    while ((bytes_read = fread(buffer, 1, READ_BUF_SIZE, file)) > 0) {
+
+        for (size_t i = 0; i < bytes_read; ++i) {
+            char ch = buffer[i];
+
+            if (is_header) {
+                if (ch == '\n') {
+                    is_header = 0;
+                }
+            }
+            else {
+                if (ch == '>') {
+                    info_file.number_seqs++;
+
+                    if (count_bases > info_file.max_size_seq) {
+                        info_file.max_size_seq = count_bases;
+                    }
+
+                    count_bases = 0;
+                    is_header = 1;
+                }
+                else if (ch != '\n') {
+                    count_bases++;
+                }
+            }
+        }
+    }
+
+    /* Final sequence (EOF without trailing '>') */
+    if (count_bases > info_file.max_size_seq) {
         info_file.max_size_seq = count_bases;
     }
 
-    printf("Max number bases %d\n\n", info_file.max_size_seq);
-
     fclose(file);
-
 
     return info_file;
 }
-
-

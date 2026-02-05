@@ -144,9 +144,13 @@ def pca_feature_analysis(X, n_components):
 
 def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_test = None, feature_names=None):
 
+	print(X_train.dtypes[X_train.dtypes == 'object'])
+
 	if is_test == True:
 
-		scores, mean_score, std_dev = calculate_cv_scores(model, name, X_train, y_train)
+		scores_cv, mean_score_cv, std_dev_cv = calculate_cv_scores(model, name, X_train, y_train)
+
+		scores_rand, mean_score_rand, std_dev_rand = calculate_std_dev_rand_seed(model, name, X_train, y_train, X_test, y_test)
 
 
 		# Train the model
@@ -179,9 +183,12 @@ def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_tes
 
 		string_to_write = (
 				str(name) + "\t" +
-				str(scores) + "\t" +
-				str(mean_score) + "\t" +
-				str(std_dev) + "\t" +
+				str(scores_cv) + "\t" +
+				str(mean_score_cv) + "\t" +
+				str(std_dev_cv) + "\t" +
+				str(scores_rand) + "\t" +
+				str(mean_score_rand) + "\t" +
+				str(std_dev_rand) + "\t" +
 				str(acc) + "\t" +
 				str(f1) + "\t" +
 				str(auroc) + "\t" +
@@ -190,8 +197,8 @@ def fit_and_predict(model, name, is_test, X_train, y_train, X_test = None, y_tes
 
 		write_to_file(string_to_write)
 
-		compute_shap(X_train, X_test, model, feature_names)
-		pca_feature_analysis(X_train, n_components=15)
+		#compute_shap(X_train, X_test, model, feature_names)
+		#pca_feature_analysis(X_train, n_components=15)
 
 	else:
 		print("Saving the " + name + "...")
@@ -304,6 +311,31 @@ def calculate_cv_scores(model, name, X_train, y_train):
 
 	return scores, mean_score, std_dev
 
+
+#TODO
+def calculate_std_dev_rand_seed(model, name, X_train, y_train, X_test, y_test):
+	# Print model name
+	print("\n\nTesting the " + name + "...")
+
+	scores = []
+
+	for i in range(5):
+		model.fit(X_train, y_train)
+		preds = model.predict(X_test)
+
+		score = accuracy_score(y_test, preds)
+		scores.append(score)
+
+	# Mean and standard deviation
+	mean_score = np.mean(scores)
+	std_dev = np.std(scores)
+
+	print(f"Cross-validation scores: {scores}")
+	print(f"Mean accuracy: {mean_score:.3f}")
+	print(f"Standard deviation: {std_dev:.3f}")
+
+	return scores, mean_score, std_dev
+
 def write_predictions(X_column, predictions, name_file):
 	results_df = pd.DataFrame(X_column)
 	results_df.insert(0, 'predicted_value', predictions)
@@ -331,6 +363,7 @@ if __name__ == '__main__':
 	parser.add_argument("-o", "--analysis_options", help="Options for the execution of the C file. Please surround the options with \"\"", type=str, metavar="<analysis_options>")
 	parser.add_argument("-p", "--permutations", help="Add permutations of a certain number of characters", action='append', type=int, required=False, metavar="<number_bases_permutations>")
 	parser.add_argument("-b", "--balance", help="Balances the training dataset", action='store_true', required=False)
+	parser.add_argument("-t", "--tuning", help="Tuning mode", action='store_true', required=False)
 	args = parser.parse_args()
 
 	permutations_added = ""
@@ -375,7 +408,7 @@ if __name__ == '__main__':
 	if os.path.exists(file_tsv):
 		os.remove(file_tsv)
 
-	write_to_file("S" + str(args.segment) + "_Name_model\tScores_CV\tMean_score_CV\tStd_deviation\tAccuracy\tF1-score\tAUROC\tAUPRC\n")
+	write_to_file("S" + str(args.segment) + "_Name_model\tScores_CV\tMean_score_CV\tStd_deviation_CV\tScores_RandSeed\tMean_score_RandSeed\tStd_deviation_RandSeed\tAccuracy\tF1-score\tAUROC\tAUPRC\n")
 
 	# Import training data
 	data_tds = import_files(dataset_name, args.segment)
@@ -390,6 +423,8 @@ if __name__ == '__main__':
 	
 	# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
 	data_tds = data_tds.loc[:, ~data_tds.columns.str.startswith('Prob_sequence_')]
+	data_tds = data_tds.loc[:, ~data_tds.columns.str.startswith('Most_frequent_bigram_')]
+
 	data_tds = data_tds.drop(columns=['Sequence_size'])
 	
 	# -> Train the models on the training dataset
@@ -401,60 +436,109 @@ if __name__ == '__main__':
 	# Train/test split (stratified)
 	X_train_tds, X_test_tds, y_train_tds, y_test_tds = train_test_split(X_tds, Y_tds, stratify=Y_tds, test_size=0.2, random_state=42)
 
+	# Get number of instances per class dataframe
+	df_counts = data_tds['Sequence_id'].value_counts().reset_index()
+	print(df_counts)
+
 	# Set models
-	models_considered = [ ["XGBClassifier", XGBClassifier(random_state=42)] , [ "RandomForestClassifier", RandomForestClassifier(random_state=42)], [ "KNeighborsClassifier", KNeighborsClassifier()], [ "MLPClassifier", MLPClassifier(random_state=42)]]
+	models_considered = [["XGBClassifier", XGBClassifier(random_state=42)],
+						 ["RandomForestClassifier", RandomForestClassifier(random_state=42)],
+						 ["KNeighborsClassifier", KNeighborsClassifier()],
+						 ["MLPClassifier", MLPClassifier(random_state=42)]]
 
-	for i in models_considered:
-		# Get performance in the cross validation and train the models on the entire training set
-		fit_and_predict(i[1], i[0], True, X_train_tds, y_train_tds, X_test_tds, y_test_tds, feature_names)
+	if args.tuning:
 
-		# Save the models
-		fit_and_predict(i[1], i[0], False, X_tds, Y_tds)
+		# Hyperparameter tuning
+		for i in models_considered:
+			print("\n\nTuning the " + i[0] + "...\n")
 
+			if i[0] == "XGBClassifier":
+				param_grid = {
+					'n_estimators': [50, 100, 200],
+					'max_depth': [3, 5, 7],
+					'learning_rate': [0.01, 0.1, 0.2]
+				}
+			elif i[0] == "RandomForestClassifier":
+				param_grid = {
+					'n_estimators': [100, 200],
+					'max_depth': [None, 10, 20],
+					'min_samples_split': [2, 5]
+				}
+			elif i[0] == "KNeighborsClassifier":
+				param_grid = {
+					'n_neighbors': [3, 5, 7],
+					'weights': ['uniform', 'distance']
+				}
+			elif i[0] == "MLPClassifier":
+				param_grid = {
+					'hidden_layer_sizes': [(50,), (100,), (100, 50)],
+					'activation': ['relu', 'tanh'],
+					'solver': ['adam', 'sgd']
+				}
 
-	# Beginning classification of outside sequences
+			grid_search = GridSearchCV(i[1], param_grid, cv=3, n_jobs=-1)
+			grid_search.fit(X_train_tds, y_train_tds)
 
-	test_irl = "test.tsv"
-
-	# If there is real data to be classified - FASTA format
-	if args.classification_fasta is not None and os.path.exists(args.classification_fasta):
-
-		print("Analysing the file to be classified.\n")
-		print("\n./genomeclass -i " + args.classification_fasta + " " + options + " -o " + test_irl + "\n\n")
-		os.system("./genomeclass -i " + args.classification_fasta + " " + options + " -o " + test_irl)
-
-	# If there is real data to be classified - TSV format
-	elif args.classification_tsv is not None and os.path.exists(args.classification_tsv):
-		print("Using " + args.classification_tsv + " as the input file.\n")
-		test_irl = args.classification_tsv
-
+			print(f"Best parameters for {i[0]}: {grid_search.best_params_}")
 	else:
-		print("File to be classified is not available. Exiting...")
-		exit(1)
 
-	# Import data to be classified
-	data_clf = import_files(test_irl, args.segment)
+		for i in models_considered:
 
-	# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
-	data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Prob_sequence_')]
-	data_clf = data_clf.drop(columns=['Sequence_size'])
+			# Get performance in the cross validation and train the models on the entire training set
+			fit_and_predict(i[1], i[0], True, X_train_tds, y_train_tds, X_test_tds, y_test_tds, feature_names)
 
-	# -> Train the models on the training dataset
-	print(data_clf.shape)
+			# Save the models
+			fit_and_predict(i[1], i[0], False, X_tds, Y_tds)
 
-	# Separate features and target first
-	X_clf, Y_clf, le_clf = drop_columns(data_clf)
 
-	for i in models_considered:
+		# Beginning classification of outside sequences
 
-		# Predict the classifications
-		with open(i[0] + '.sav', 'rb') as file:
-			ml_model_trained = pickle.load(file)
-			predictions = ml_model_trained.predict(X_clf)
-			predicted_labels = le.inverse_transform(predictions)
+		test_irl = "test.tsv"
 
-			# Write predictions to a TSV file
-			write_predictions(data_clf, predicted_labels, "predictions_" + i[0] + ".tsv")
+		# If there is real data to be classified - FASTA format
+		if args.classification_fasta is not None and os.path.exists(args.classification_fasta):
+
+			print("Analysing the file to be classified.\n")
+			print("\n./genomeclass -i " + args.classification_fasta + " " + options + " -o " + test_irl + "\n\n")
+			os.system("./genomeclass -i " + args.classification_fasta + " " + options + " -o " + test_irl)
+
+		# If there is real data to be classified - TSV format
+		elif args.classification_tsv is not None and os.path.exists(args.classification_tsv):
+			print("Using " + args.classification_tsv + " as the input file.\n")
+			test_irl = args.classification_tsv
+
+		else:
+			print("File to be classified is not available. Exiting...")
+			exit(1)
+
+		# Import data to be classified
+		data_clf = import_files(test_irl, args.segment)
+		data_clf.columns = data_clf.columns.str.strip()
+
+
+		# Removes the columns that begin with Prob_sequence as they hold information similar to those that begin with Avg_distance
+		data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Prob_sequence_')]
+
+		data_clf = data_clf.loc[:, ~data_clf.columns.str.startswith('Most_frequent_bigram_')]
+
+		data_clf = data_clf.drop(columns=['Sequence_size'])
+
+		# -> Train the models on the training dataset
+		print(data_clf.shape)
+
+		# Separate features and target first
+		X_clf, Y_clf, le_clf = drop_columns(data_clf)
+
+		for i in models_considered:
+
+			# Predict the classifications
+			with open(i[0] + '.sav', 'rb') as file:
+				ml_model_trained = pickle.load(file)
+				predictions = ml_model_trained.predict(X_clf)
+				predicted_labels = le.inverse_transform(predictions)
+
+				# Write predictions to a TSV file
+				write_predictions(data_clf, predicted_labels, "predictions_" + i[0] + ".tsv")
 
 
 

@@ -321,6 +321,7 @@ Dist_Prob_sequence get_sequence_distance(char *content_sequence, char *subsequen
 }
 
 
+
 // Write the results to the output file (.tsv format)
 int write_to_file(char* results){
 
@@ -393,7 +394,9 @@ int write_to_file(char* results){
            
     }
 
+    pthread_mutex_lock(&output_file_mutex);
     fprintf(file_output, "%s\n", results);  // Write the results to the file
+    pthread_mutex_unlock(&output_file_mutex);
     fclose(file_output); // Close the file
 
     return 0;
@@ -812,11 +815,8 @@ int process_file (int thread_id) {
                 char* results = make_results(count_sequences, start_pos_sequence, current_pos, number_a, number_c, number_t, number_g, number_other, header);
                 
                 // Write results to file
-                pthread_mutex_lock(&output_file_mutex);
                 write_to_file(results);
-                
-                //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
-                pthread_mutex_unlock(&output_file_mutex);
+
 
                 // Update progress bar
                 if (verbose == 0){ // Update the progress bar
@@ -907,11 +907,7 @@ int process_file (int thread_id) {
         char* results = make_results(count_sequences, start_pos_sequence, current_pos, number_a, number_c, number_t, number_g, number_other, header);
 
         // Write results to file
-        pthread_mutex_lock(&output_file_mutex);
         write_to_file(results);
-        
-        //printf("Thread %d is processing sequence %ld\n", thread_id, count_sequences);
-        pthread_mutex_unlock(&output_file_mutex);
 
         // Update progress bar
         if (verbose == 0){ // Update the progress bar
